@@ -1,0 +1,1860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>beamCutoff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: Carbon-style enterprise tool. Fixed control rail on the left, analysis canvas on the right:
+   verdict strip first, then the candela map, scans, and the regulation tables. Square corners, 1px rules. */
+:root {
+  --bg: #f2f4f8;
+  --layer: #ffffff;
+  --layer-2: #e8ebf1;
+  --text: #161616;
+  --text-2: #525a66;
+  --rule: #d5d9e0;
+  --accent: #0f62fe;
+  --accent-ink: #ffffff;
+  --ok: #198038;
+  --bad: #da1e28;
+  --warn: #8e6a00;
+  --ok-bg: #defbe6;
+  --bad-bg: #fff1f1;
+  --warn-bg: #fcf4d6;
+  --cut: #d02670;
+  --font-display: "IBM Plex Sans Condensed", "IBM Plex Sans", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121417; --layer: #1d2025; --layer-2: #272b31; --text: #f2f4f8; --text-2: #b4bac4; --rule: #363b43;
+    --accent: #78a9ff; --accent-ink: #0b1220; --ok: #42be65; --bad: #ff8389; --warn: #f1c21b;
+    --ok-bg: #0e3a1f; --bad-bg: #4a1418; --warn-bg: #3d3000; --cut: #ff7eb6; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121417; --layer: #1d2025; --layer-2: #272b31; --text: #f2f4f8; --text-2: #b4bac4; --rule: #363b43;
+  --accent: #78a9ff; --accent-ink: #0b1220; --ok: #42be65; --bad: #ff8389; --warn: #f1c21b;
+  --ok-bg: #0e3a1f; --bad-bg: #4a1418; --warn-bg: #3d3000; --cut: #ff7eb6; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; text-wrap: balance; margin: 0; }
+h1 { font-size: 22px; letter-spacing: 0.01em; }
+h2 { font-size: 17px; }
+h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); font-weight: 600; }
+.mono, td.num, .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+a { color: var(--accent); }
+
+.app { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 100%; }
+.rail { background: var(--layer); border-right: 1px solid var(--rule); padding: 20px 18px 40px; display: flex; flex-direction: column; gap: 18px; position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; }
+.main { padding: 20px 24px 60px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .rail { position: static; max-height: none; border-right: 0; border-bottom: 1px solid var(--rule); }
+  .main { padding: 16px; }
+}
+.brand { display: flex; flex-direction: column; gap: 4px; }
+.brand p { margin: 0; color: var(--text-2); font-size: 12.5px; }
+.group { display: flex; flex-direction: column; gap: 8px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label, .lbl { font-size: 12px; color: var(--text-2); }
+select, input[type="number"] { font: inherit; font-size: 13px; color: var(--text); background: var(--layer-2); border: 0; border-bottom: 1px solid var(--text-2); padding: 7px 8px; width: 100%; border-radius: 0; }
+select:focus-visible, input:focus-visible, button:focus-visible, .drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.check input { width: 16px; height: 16px; accent-color: var(--accent); }
+button { font: inherit; font-size: 13px; cursor: pointer; border: 1px solid transparent; padding: 8px 12px; border-radius: 0; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-ghost { background: transparent; color: var(--accent); border-color: var(--accent); }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.drop { border: 1px dashed var(--text-2); padding: 16px 12px; text-align: center; cursor: pointer; background: var(--layer-2); display: flex; flex-direction: column; gap: 4px; }
+.drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--layer-2)); }
+.drop strong { font-weight: 500; }
+.drop span { font-size: 12px; color: var(--text-2); }
+.privacy { font-size: 11.5px; color: var(--text-2); border-left: 2px solid var(--ok); padding-left: 8px; }
+
+.filebar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; }
+.filebar .name { font-family: var(--font-mono); font-size: 13px; }
+.status { font-size: 12.5px; color: var(--text-2); }
+.banner { padding: 10px 14px; border-left: 3px solid var(--warn); background: var(--warn-bg); font-size: 13px; }
+.banner.bad { border-color: var(--bad); background: var(--bad-bg); }
+.banner ul { margin: 4px 0 0; padding-left: 18px; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.tile { background: var(--layer); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tile .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); }
+.tile .v { font-family: var(--font-display); font-size: 20px; font-weight: 600; line-height: 1.2; }
+.tile .s { font-size: 12.5px; color: var(--text-2); }
+.tile.verdict-ok { box-shadow: inset 4px 0 0 var(--ok); }
+.tile.verdict-bad { box-shadow: inset 4px 0 0 var(--bad); }
+.tile.verdict-na { box-shadow: inset 4px 0 0 var(--text-2); }
+
+.panel { background: var(--layer); border: 1px solid var(--rule); padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.panel-head p { margin: 0; color: var(--text-2); font-size: 12.5px; }
+.seg { display: inline-flex; border: 1px solid var(--rule); }
+.seg button { background: transparent; color: var(--text-2); padding: 5px 10px; font-size: 12.5px; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+@media (max-width: 1100px) { .grid2 { grid-template-columns: 1fr; } }
+canvas { display: block; width: 100%; }
+.mapwrap { position: relative; }
+.tip { position: absolute; pointer-events: none; background: var(--layer); border: 1px solid var(--rule); padding: 4px 8px; font-family: var(--font-mono); font-size: 12px; white-space: nowrap; display: none; z-index: 2; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--text-2); align-items: center; }
+.sw { display: inline-block; width: 18px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 5px; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; margin-right: 5px; }
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th { text-align: left; font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-2); padding: 8px 10px; border-bottom: 1px solid var(--text-2); white-space: nowrap; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+td.num, th.num { text-align: right; white-space: nowrap; }
+td.sub { color: var(--text-2); font-size: 12px; }
+tr.fail td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
+.pill { display: inline-block; padding: 1px 8px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; }
+.pill.ok { background: var(--ok-bg); color: var(--ok); }
+.pill.bad { background: var(--bad-bg); color: var(--bad); }
+.pill.na { background: var(--layer-2); color: var(--text-2); }
+.marg { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.marg i { display: block; height: 6px; background: var(--ok); }
+.marg i.neg { background: var(--bad); }
+.marg .bar { width: 70px; height: 6px; background: var(--layer-2); display: flex; }
+
+
+.robust td, .robust th { text-align: center; padding: 6px 8px; }
+.robust td.c { font-family: var(--font-mono); font-size: 12px; min-width: 64px; }
+.robust td.c.ok { background: var(--ok-bg); color: var(--ok); }
+.robust td.c.bad { background: var(--bad-bg); color: var(--bad); }
+.robust td.c.nom { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 24px; }
+.kv div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
+.kv div span:first-child { color: var(--text-2); }
+.kv div span:last-child { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+.notes { font-size: 12.5px; color: var(--text-2); max-width: 90ch; }
+.notes li { margin: 3px 0; }
+.hidden { display: none !important; }
+footer { font-size: 12px; color: var(--text-2); border-top: 1px solid var(--rule); padding-top: 12px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail" aria-label="Inputs and settings">
+    <div class="brand">
+      <h1>beamCutoff</h1>
+      <p>Low-beam cut-off analyser from IES files, with a UN&nbsp;R149 passing-beam check (00 series).</p>
+    </div>
+
+    <div class="group">
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Open an IES file">
+        <strong>Drop an IES file here</strong>
+        <span>or click to choose (.ies, LM-63)</span>
+      </div>
+      <input type="file" id="file" accept=".ies,.IES,.txt" class="hidden">
+      <div class="btn-row"><button class="btn-ghost" id="btnExample" type="button">Load built-in example</button></div>
+      <div class="privacy">The file is read in your browser only. Nothing is uploaded.</div>
+    </div>
+
+    <div class="group">
+      <h3>File axes</h3>
+      <label class="check" for="optFlipV"><input type="checkbox" id="optFlipV"> V is positive downward in the file</label>
+      <label class="check" for="optFlipH"><input type="checkbox" id="optFlipH"> Mirror H (file has H positive left)</label>
+    </div>
+
+    <div class="group">
+      <h3>Regulation</h3>
+      <div class="field"><span class="lbl">Passing-beam class</span><span>Class C (UN R149, 00 series)</span></div>
+      <div class="field"><label for="optTraffic">Traffic side</label>
+        <select id="optTraffic"><option value="auto">Detect from cut-off shape</option><option value="RHT">Right-hand traffic</option><option value="LHT">Left-hand traffic</option></select></div>
+    </div>
+
+    <div class="group">
+      <h3>Aiming</h3>
+      <div class="field"><label for="optAim">Aim before the check</label>
+        <select id="optAim">
+          <option value="full">Cut-off to target, kink to V-V</option>
+          <option value="vertical">Vertical only (keep file H)</option>
+          <option value="none">None (as in file)</option>
+        </select></div>
+      <div class="field"><label for="optHMethod">Kink position for horizontal aim</label>
+        <select id="optHMethod">
+          <option value="geom">Geometric kink (line intersection)</option>
+          <option value="02D">0.2D line scan (Annex 6 §3.2 a)</option>
+          <option value="3line">Three-line 1R/2R/3R (Annex 6 §3.2 b)</option>
+        </select></div>
+      <div class="row2">
+        <div class="field"><label for="optTarget">Cut-off target (°D)</label><input type="number" id="optTarget" value="0.57" step="0.01" min="0" max="2"></div>
+        <div class="field"><label for="optMount">Mounting height (m)</label><input type="number" id="optMount" value="0.65" step="0.05" min="0.2" max="2"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label for="optDv">Extra vertical shift (°, + up)</label><input type="number" id="optDv" value="0" step="0.05"></div>
+        <div class="field"><label for="optDh">Extra horizontal shift (°, + right)</label><input type="number" id="optDh" value="0" step="0.05"></div>
+      </div>
+      <div class="field"><label for="optDet">Detector aperture for cut-off line</label>
+        <select id="optDet"><option value="none">None (file grid)</option><option value="10m">10 m, Ø10 mm</option><option value="25m">25 m, Ø30 mm</option></select></div>
+    </div>
+
+    <div class="group">
+      <h3>Report</h3>
+      <div class="btn-row">
+        <button class="btn-primary" id="btnPdf" type="button">Download PDF report</button>
+        <button class="btn-ghost" id="btnHtml" type="button">Download HTML report</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn-ghost" id="btnCsv" type="button">Download CSV</button>
+        <button class="btn-ghost" id="btnJson" type="button">Copy JSON</button>
+      </div>
+      <div class="status" id="copyStatus" aria-live="polite"></div>
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="filebar">
+      <div><span class="lbl">File</span> <span class="name" id="fileName">—</span></div>
+      <div class="status" id="status" aria-live="polite">Loading…</div>
+    </div>
+    <div id="banners"></div>
+
+    <section class="tiles" id="tiles" aria-label="Summary"></section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div><h2>Candela map</h2><p id="mapSub">Aimed beam, screen angles in degrees, log scale.</p></div>
+        <div class="seg" role="group" aria-label="Map frame">
+          <button type="button" id="viewAimed" aria-pressed="true">Aimed (regulation)</button>
+          <button type="button" id="viewRaw" aria-pressed="false">As in file</button>
+        </div>
+      </div>
+      <div class="mapwrap"><canvas id="map" aria-label="Isocandela map"></canvas><div class="tip" id="tip"></div></div>
+      <div class="legend" id="mapLegend"></div>
+    </section>
+
+    <div class="grid2">
+      <section class="panel">
+        <div class="panel-head"><div><h2>Vertical scans through the horizontal cut-off</h2><p id="vsSub">log I and gradient G at 1.5°, 2.5°, 3.5°, file angles.</p></div></div>
+        <canvas id="vscan"></canvas>
+        <div class="legend" id="vsLegend"></div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><div><h2>Cut-off line</h2><p id="clSub">Inflection position per vertical scan, file angles.</p></div></div>
+        <canvas id="cline"></canvas>
+        <div class="legend" id="clLegend"></div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head"><div><h2>Cut-off quality and aiming</h2><p>UN R149 Annex 6, instrumental verification of the cut-off.</p></div></div>
+      <div class="tablewrap"><table id="tblCut"></table></div>
+      <div class="kv" id="kinkKv"></div>
+    </section>
+
+    <section class="panel" id="regPanel">
+      <div class="panel-head"><div><h2 id="regTitle">Photometric check</h2><p id="regSub"></p></div></div>
+      <div class="tablewrap"><table id="tblReg"></table></div>
+    </section>
+
+    <section class="panel" id="robPanel">
+      <div class="panel-head"><div><h2>Aim robustness</h2><p>Failing photometric items when the aimed beam is moved away from nominal. The outlined cell is the aim used above.</p></div></div>
+      <div class="tablewrap"><table class="robust" id="tblRob"></table></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><div><h2>Additional beam data</h2><p>Aimed beam unless stated. Road values use the mounting height on the left, flat road, one lamp.</p></div></div>
+      <div class="kv" id="extraKv"></div>
+      <div class="tablewrap"><table id="tblRange"></table></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><div><h2>File and method</h2></div></div>
+      <div class="kv" id="fileKv"></div>
+      <ul class="notes" id="methodNotes">
+        <li>Regulation basis: UN R149, 00 series (original version) as amended by its supplements. Photometric values from Table 9 (Class C), Imax segment and cut-off position from Table 10, Zone III from Table 11, cut-off quality and instrumental aiming from Annex 6. Verify limits against your controlled copy of the 00 series, Supplement 6 before using the result for approval work.</li>
+        <li>Angles: Type A/B files are read as screen angles (H right, V up). Type C files are mapped H = C-plane angle, V = γ − 90°. Use the axis options if the file uses another sign convention.</li>
+        <li>Gradient G = log I(β) − log I(β + 0.1°), evaluated on a 0.01° resampled scan of the bilinear-interpolated file. The cut-off is the inflection point (maximum G). Only transitions with a bright zone below are counted.</li>
+        <li>Minimum sharpness uses the better of the 10 m/Ø10 mm and 25 m/Ø30 mm detector apertures; maximum sharpness uses 25 m/Ø30 mm, as in Annex 6 §2. Simulation files on grids coarser than 0.05° give a biased G.</li>
+        <li>Horizontal aim. Geometric kink: intersection of the horizontal part with a straight-line fit of the inclined part. Method (a): inflection on a horizontal scan at 0.2°D (after vertical aim) placed on V-V. Method (b): inflections on vertical scans at 1R, 2R, 3R, line through them, intersection with the cut-off line B placed on V-V. Methods (a) and (b) are what the applicant declares for instrumental aiming; for a 15° cut-off they put the geometric kink left of V-V.</li>
+        <li>One lamp is evaluated with its full intensity. Footnote minima "each side ≥ 50 cd" are applied to this lamp. S50/S100 sums are evaluated without position lamps. LHT beams are mirrored and checked with L and R swapped.</li>
+        <li>Not covered in this version: other passing-beam classes (V, E, W and A/B/D), bending mode (Table 9 Part B), symmetric passing beams (Classes AS–ES), colour and stability tests.</li>
+      </ul>
+    </section>
+    <footer>beamCutoff · runs locally in the browser · © 2026 Jalib Akther · MIT licence</footer>
+  </main>
+</div>
+
+<script>
+/* beamCutoff core — IES parsing, cut-off analysis, UN R149 passing-beam check.
+ * Pure functions, no DOM. Works in browser (window.BCCore) and Node (module.exports).
+ * Coordinate convention: H positive = right, V positive = up, degrees, 0/0 = lamp axis (HV).
+ */
+(function (root) {
+  'use strict';
+  const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+  const log10 = Math.log10;
+
+  /* ------------------------------------------------------------------ */
+  /* IES LM-63 parser                                                    */
+  /* ------------------------------------------------------------------ */
+  function parseIES(text) {
+    const lines = text.split(/\r?\n/);
+    const keywords = {};
+    let tiltIdx = -1;
+    const firstLine = (lines[0] || '').trim();
+    for (let i = 0; i < lines.length; i++) {
+      const ln = lines[i].trim();
+      const m = ln.match(/^\[([^\]]+)\]\s*(.*)$/);
+      if (m) {
+        const k = m[1].toUpperCase();
+        keywords[k] = keywords[k] ? keywords[k] + ' ' + m[2] : m[2];
+      }
+      if (/^TILT\s*=/i.test(ln)) { tiltIdx = i; break; }
+    }
+    if (tiltIdx < 0) throw new Error('No "TILT=" line found. This does not look like an IES LM-63 file.');
+    const tilt = lines[tiltIdx].split('=').slice(1).join('=').trim().toUpperCase();
+    const tok = lines.slice(tiltIdx + 1).join(' ').trim().split(/[\s,]+/).filter(Boolean).map(Number);
+    let p = 0;
+    if (tilt === 'INCLUDE') { p++; const n = tok[p++]; p += 2 * n; }
+    const need = (k) => { if (p + k > tok.length) throw new Error('IES file is truncated (not enough numeric values).'); };
+    need(13);
+    const hdr = {
+      nLamps: tok[p++], lumensPerLamp: tok[p++], multiplier: tok[p++],
+      nV: Math.round(tok[p++]), nH: Math.round(tok[p++]), photType: Math.round(tok[p++]),
+      units: tok[p++], width: tok[p++], length: tok[p++], height: tok[p++],
+      ballast: tok[p++], futureUse: tok[p++], watts: tok[p++]
+    };
+    const { nV, nH } = hdr;
+    if (!(nV > 1 && nH > 0)) throw new Error('Invalid number of angles in IES header.');
+    need(nV + nH + nV * nH);
+    const vAng = Float64Array.from(tok.slice(p, p + nV)); p += nV;
+    const hAng = Float64Array.from(tok.slice(p, p + nH)); p += nH;
+    const cd = Float64Array.from(tok.slice(p, p + nV * nH)); p += nV * nH;
+    for (let i = 0; i < cd.length; i++) if (!isFinite(cd[i])) throw new Error('Non-numeric candela value in file.');
+    return { format: firstLine, keywords, tilt, hdr, vAng, hAng, cd };
+  }
+
+  /* Build an H/V grid (H right+, V up+) from a parsed file. */
+  function buildGrid(ies, opt) {
+    opt = opt || {};
+    const { hdr, vAng, hAng, cd } = ies;
+    const scale = (hdr.multiplier || 1) * (opt.applyBallast === false ? 1 : (hdr.ballast || 1));
+    const notes = [];
+    let cols = []; // {h, vals: Float64Array over V}
+    let V;
+    const nV = vAng.length;
+    const colOf = (j) => { const a = new Float64Array(nV); for (let i = 0; i < nV; i++) a[i] = cd[j * nV + i] * scale; return a; };
+
+    if (hdr.photType === 1) { // Type C : C-planes about vertical axis, gamma from nadir
+      notes.push('Type C file mapped to H/V: H = C-plane angle (−180…180), V = γ − 90°.');
+      let planes = [];
+      for (let j = 0; j < hAng.length; j++) planes.push({ c: hAng[j], vals: colOf(j) });
+      const cmax = Math.max(...hAng), cmin = Math.min(...hAng);
+      if (hAng.length === 1) { planes.push({ c: 180, vals: planes[0].vals }); planes.push({ c: 360, vals: planes[0].vals }); notes.push('Rotationally symmetric Type C file.'); }
+      else if (cmin === 0 && cmax <= 90) {
+        const ext = [];
+        planes.forEach(pl => { ext.push({ c: 180 - pl.c, vals: pl.vals }, { c: 180 + pl.c, vals: pl.vals }, { c: 360 - pl.c, vals: pl.vals }); });
+        planes = planes.concat(ext); notes.push('Quadrant-symmetric Type C file expanded to 360°.');
+      } else if (cmin === 0 && cmax <= 180) {
+        planes = planes.concat(planes.map(pl => ({ c: 360 - pl.c, vals: pl.vals }))); notes.push('Bilaterally symmetric Type C file mirrored to 360°.');
+      }
+      const map = new Map();
+      planes.forEach(pl => { let h = ((pl.c % 360) + 360) % 360; if (h > 180) h -= 360; const k = Math.round(h * 1e6) / 1e6; if (!map.has(k)) map.set(k, pl.vals); });
+      cols = [...map.entries()].map(([h, vals]) => ({ h, vals }));
+      if (map.has(180) && !map.has(-180)) cols.push({ h: -180, vals: map.get(180) });
+      V = Array.from(vAng, g => g - 90);
+    } else { // Type A / B : H-V photometry (taken directly as screen angles)
+      if (hdr.photType !== 2 && hdr.photType !== 3) notes.push('Unknown photometric type ' + hdr.photType + ' — treated as H-V (Type B).');
+      for (let j = 0; j < hAng.length; j++) cols.push({ h: hAng[j], vals: colOf(j) });
+      const hmin = Math.min(...hAng);
+      if (hmin >= 0 && hAng.length > 1) {
+        const mir = cols.filter(c => c.h > 0).map(c => ({ h: -c.h, vals: c.vals }));
+        cols = cols.concat(mir);
+        notes.push('File covers only H ≥ 0 — mirrored to H < 0 (symmetric assumption). A low beam is normally NOT symmetric: check the file.');
+      }
+      V = Array.from(vAng);
+    }
+    // sort V ascending
+    let vIdx = V.map((v, i) => i).sort((a, b) => V[a] - V[b]);
+    // sort columns by H
+    cols.sort((a, b) => a.h - b.h);
+    // dedupe H
+    cols = cols.filter((c, i) => i === 0 || Math.abs(c.h - cols[i - 1].h) > 1e-9);
+    let Hs = cols.map(c => c.h);
+    let Vs = vIdx.map(i => V[i]);
+    if (opt.flipV) { Vs = Vs.map(v => -v).reverse(); vIdx = vIdx.slice().reverse(); notes.push('V axis flipped (file had V positive downward).'); }
+    if (opt.flipH) { Hs = Hs.map(h => -h).reverse(); cols = cols.slice().reverse(); notes.push('H axis mirrored.'); }
+    const nH = Hs.length, nVs = Vs.length;
+    const I = new Float64Array(nH * nVs);
+    let Imax = 0, iMaxH = 0, iMaxV = 0;
+    for (let j = 0; j < nH; j++) {
+      const vals = cols[j].vals;
+      for (let i = 0; i < nVs; i++) {
+        const x = Math.max(0, vals[vIdx[i]]);
+        I[j * nVs + i] = x;
+        if (x > Imax) { Imax = x; iMaxH = j; iMaxV = i; }
+      }
+    }
+    const res = (a) => { let m = Infinity; for (let i = 1; i < a.length; i++) m = Math.min(m, a[i] - a[i - 1]); return m; };
+    return {
+      H: Float64Array.from(Hs), V: Float64Array.from(Vs), I, nH, nV: nVs,
+      Imax, ImaxAt: { h: Hs[iMaxH], v: Vs[iMaxV] },
+      hRes: res(Hs), vRes: res(Vs), notes
+    };
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Sampling                                                            */
+  /* ------------------------------------------------------------------ */
+  function axisLocator(A) {
+    const n = A.length, a0 = A[0], step = (A[n - 1] - a0) / (n - 1);
+    let uniform = true;
+    for (let i = 1; i < n; i++) if (Math.abs(A[i] - a0 - i * step) > 1e-6 * Math.max(1, Math.abs(step))) { uniform = false; break; }
+    return function (x) { // returns [i0, t] or null
+      if (x < A[0] - 1e-9 || x > A[n - 1] + 1e-9) return null;
+      let i;
+      if (uniform) { i = Math.floor((x - a0) / step); }
+      else { let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (A[m] <= x) lo = m; else hi = m; } i = lo; }
+      if (i < 0) i = 0; if (i > n - 2) i = n - 2;
+      let t = (x - A[i]) / (A[i + 1] - A[i]); if (t < 0) t = 0; if (t > 1) t = 1;
+      return [i, t];
+    };
+  }
+
+  function makeSampler(g) {
+    const lh = axisLocator(g.H), lv = axisLocator(g.V), nV = g.nV, I = g.I;
+    return function (h, v) {
+      const a = lh(h); if (!a) return 0; const b = lv(v); if (!b) return 0;
+      const j = a[0], tj = a[1], i = b[0], ti = b[1];
+      const k = j * nV + i;
+      const i00 = I[k], i01 = I[k + 1], i10 = I[k + nV], i11 = I[k + nV + 1];
+      return (1 - tj) * ((1 - ti) * i00 + ti * i01) + tj * ((1 - ti) * i10 + ti * i11);
+    };
+  }
+
+  /* transform: canonical/aimed frame -> raw.  mirror m=±1, shifts dh,dv applied to the beam */
+  function transformed(f, m, dh, dv) { return (h, v) => f(m * (h - dh), v - dv); }
+
+  /* detector aperture (disc average) — angular diameter in degrees */
+  function withAperture(f, diam) {
+    if (!diam) return f;
+    const r = diam / 2, pts = [[0, 0, 1]];
+    for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3; pts.push([0.5 * r * Math.cos(a), 0.5 * r * Math.sin(a), 1]); }
+    for (let k = 0; k < 12; k++) { const a = (k + 0.5) * Math.PI / 6; pts.push([0.9 * r * Math.cos(a), 0.9 * r * Math.sin(a), 1]); }
+    const wsum = pts.length;
+    return (h, v) => { let s = 0; for (const p of pts) s += f(h + p[0], v + p[1]); return s / wsum; };
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Scans & gradient (R149 Annex 6 style: G = log I(β) − log I(β+0.1°)) */
+  /* ------------------------------------------------------------------ */
+  // vertical scan at fixed h. Gradient positive where it is brighter BELOW.
+  function vscan(f, h, v0, v1, floorCd, step) {
+    step = step || 0.01;
+    const n = Math.max(3, Math.round((v1 - v0) / step) + 1);
+    const vs = new Float64Array(n), Is = new Float64Array(n), L = new Float64Array(n);
+    let imax = 0;
+    for (let k = 0; k < n; k++) { const v = v0 + k * step; vs[k] = v; const x = f(h, v); Is[k] = x; if (x > imax) imax = x; L[k] = log10(Math.max(x, floorCd)); }
+    const half = Math.round(0.05 / step), below = Math.round(0.3 / step);
+    const G = new Float64Array(n).fill(NaN);
+    let best = -1, bestG = -Infinity;
+    for (let k = half; k < n - half; k++) {
+      const g = L[k - half] - L[k + half];
+      G[k] = g;
+      const kb = Math.max(0, k - below);
+      if (Is[kb] < 0.05 * imax) continue; // must have a bright zone below the transition
+      if (g > bestG) { bestG = g; best = k; }
+    }
+    if (best < 0) return { v: NaN, G: 0, vs, Is, Gs: G, peaks: [] };
+    let vPk = vs[best];
+    if (best > half && best < n - half - 1) { // parabolic refinement
+      const a = G[best - 1], b = G[best], c = G[best + 1], den = a - 2 * b + c;
+      if (den < 0) vPk += step * 0.5 * (a - c) / den;
+    }
+    // secondary peaks (for "only one cut-off" check)
+    const peaks = [];
+    for (let k = half + 1; k < n - half - 1; k++) {
+      if (!(G[k] >= 0.08 && G[k] >= G[k - 1] && G[k] > G[k + 1])) continue;
+      const kb = Math.max(0, k - below); if (Is[kb] < 0.05 * imax) continue;
+      peaks.push({ v: vs[k], G: G[k] });
+    }
+    // merge peaks closer than 0.3°
+    const merged = [];
+    peaks.sort((a, b) => b.G - a.G).forEach(p => { if (!merged.some(q => Math.abs(q.v - p.v) < 0.3)) merged.push(p); });
+    return { v: vPk, G: bestG, vs, Is, Gs: G, peaks: merged };
+  }
+  // horizontal scan at fixed v. Gradient positive where it is brighter to the RIGHT.
+  function hscan(f, v, h0, h1, floorCd, step) {
+    step = step || 0.01;
+    const n = Math.max(3, Math.round((h1 - h0) / step) + 1);
+    const hs = new Float64Array(n), Is = new Float64Array(n), L = new Float64Array(n);
+    let imax = 0;
+    for (let k = 0; k < n; k++) { const h = h0 + k * step; hs[k] = h; const x = f(h, v); Is[k] = x; if (x > imax) imax = x; L[k] = log10(Math.max(x, floorCd)); }
+    const half = Math.round(0.05 / step), side = Math.round(0.3 / step);
+    const G = new Float64Array(n).fill(NaN);
+    let best = -1, bestG = -Infinity;
+    for (let k = half; k < n - half; k++) {
+      const g = L[k + half] - L[k - half]; G[k] = g;
+      const kr = Math.min(n - 1, k + side); if (Is[kr] < 0.05 * imax) continue;
+      if (g > bestG) { bestG = g; best = k; }
+    }
+    if (best < 0) return { h: NaN, G: 0, hs, Is, Gs: G };
+    let hPk = hs[best];
+    if (best > half && best < n - half - 1) { const a = G[best - 1], b = G[best], c = G[best + 1], den = a - 2 * b + c; if (den < 0) hPk += step * 0.5 * (a - c) / den; }
+    return { h: hPk, G: bestG, hs, Is, Gs: G };
+  }
+
+  function median(a) { const b = a.filter(x => isFinite(x)).sort((x, y) => x - y); if (!b.length) return NaN; const m = b.length >> 1; return b.length % 2 ? b[m] : 0.5 * (b[m - 1] + b[m]); }
+
+  function cutoffLine(f, h0, h1, step, win, floorCd) {
+    const out = [];
+    for (let h = h0; h <= h1 + 1e-9; h += step) {
+      const s = vscan(f, +h.toFixed(4), win[0], win[1], floorCd, 0.01);
+      out.push({ h: +h.toFixed(4), v: s.v, G: s.G });
+    }
+    return out;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* UN R149 (00 series) passing-beam requirements — asymmetric, RHT     */
+  /* Table 9 (Class C), Table 10 (Imax segment / cut-off),               */
+  /* Table 11 (Zone III). Values in cd. For LHT, L and R are swapped.    */
+  /* ------------------------------------------------------------------ */
+  const ZONE_IIIa = [[-8, 1], [-8, 4], [8, 4], [8, 2], [6, 1.5], [1.5, 1.5], [0, 0], [-4, 0]];
+
+  function classTable(cls) {
+    // helper constructors
+    const P = (id, h, v, min, max, note) => ({ id, kind: 'point', h, v, min, max, note });
+    const S = (id, pts, min, note) => ({ id, kind: 'sum', pts, min, note });
+    const HS = (id, v, h1, h2, min, max, mode, note) => ({ id, kind: 'hseg', v, h1, h2, min, max, mode, note });
+    const RG = (id, h1, h2, v1, v2, min, max, note) => ({ id, kind: 'rect', h1, h2, v1, v2, min, max, note });
+    const BL = (id, v, h1, h2, max, note) => ({ id, kind: 'below', v, h1, h2, max, note });
+    const ZN = (id, poly, max, note) => ({ id, kind: 'zone', poly, max, note });
+    const S50 = [[-8, 4], [0, 4], [8, 4]], S100 = [[-4, 2], [0, 2], [4, 2]];
+    const pos = 'one pair of position lamps may be switched on (applicant\'s choice)';
+    const side50 = 'min 50 cd = contribution of each side (Annex 4)';
+    const n50L = 'max may be ×1.4 if declared by the applicant';
+    const t = {
+      C: [
+        P('B50L', -3.43, 0.57, 50, 350, side50),
+        P('BR', 2.5, 1.0, 50, 1750, side50),
+        HS('Segment BRR', 0.57, 8, 20, 50, 3550, 'atLeastOne', 'min 50 cd at ≥1 point of the segment'),
+        HS('Segment BLL', 0.57, -20, -8, 50, 625, 'atLeastOne', 'min 50 cd at ≥1 point of the segment'),
+        P('P', -7, 0, 63, null),
+        ZN('Zone III', ZONE_IIIa, 625),
+        S('S50+S50LL+S50RR', S50, 190, pos),
+        S('S100+S100LL+S100RR', S100, 375, pos),
+        P('75R', 1.15, -0.57, 10100, null),
+        P('50V', 0, -0.86, 5100, null),
+        P('50L', -3.43, -0.86, 3550, 13200, n50L),
+        P('25LL', -16, -1.72, 1180, null),
+        P('25RR', 11, -1.72, 1180, null),
+        BL('Segment 10 and below', -4, -4.5, 2, 12300),
+        RG('Imax', -0.5, 3, -1.72, -0.3, 16900, 44100, 'Segment Imax 0.5L–3R / 0.3D–1.72D')
+      ]
+    };
+    return t[cls];
+  }
+  // allowed aimed position of the horizontal cut-off (Table 10, item B), degrees (negative = down)
+  const CUTOFF_RANGE = { C: [-0.57, -0.57] };
+
+  function pointInPoly(x, y, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      // on-edge test (inclusive boundary)
+      const cross = (x - xi) * (yj - yi) - (y - yi) * (xj - xi);
+      if (Math.abs(cross) < 1e-9 && x >= Math.min(xi, xj) - 1e-9 && x <= Math.max(xi, xj) + 1e-9 && y >= Math.min(yi, yj) - 1e-9 && y <= Math.max(yi, yj) + 1e-9) return true;
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
+    }
+    return inside;
+  }
+
+  function evalElement(el, f, vBottom) {
+    const st = 0.05;
+    let value, at = null, minV, maxV, minAt, maxAt;
+    const scanArea = (h1, h2, v1, v2, test) => {
+      maxV = -Infinity; minV = Infinity;
+      for (let h = h1; h <= h2 + 1e-9; h += st) for (let v = v1; v <= v2 + 1e-9; v += st) {
+        if (test && !test(h, v)) continue;
+        const x = f(h, v);
+        if (x > maxV) { maxV = x; maxAt = { h, v }; }
+        if (x < minV) { minV = x; minAt = { h, v }; }
+      }
+    };
+    switch (el.kind) {
+      case 'point': value = f(el.h, el.v); at = { h: el.h, v: el.v }; break;
+      case 'sum': value = el.pts.reduce((s, p) => s + f(p[0], p[1]), 0); el.parts = el.pts.map(p => f(p[0], p[1])); break;
+      case 'hseg': scanArea(el.h1, el.h2, el.v, el.v); break;
+      case 'rect': scanArea(el.h1, el.h2, el.v1, el.v2); value = maxV; at = maxAt; break;
+      case 'below': scanArea(el.h1, el.h2, Math.min(el.v, vBottom), el.v); value = maxV; at = maxAt; break;
+      case 'zone': {
+        const xs = el.poly.map(p => p[0]), ys = el.poly.map(p => p[1]);
+        scanArea(Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys), (h, v) => pointInPoly(h, v, el.poly));
+        value = maxV; at = maxAt; break;
+      }
+    }
+    let pass = true, margin = Infinity, limitTxt = [];
+    const chkMin = (val, lim) => { if (val < lim) pass = false; margin = Math.min(margin, (val - lim) / lim); };
+    const chkMax = (val, lim) => { if (val > lim) pass = false; margin = Math.min(margin, (lim - val) / lim); };
+    if (el.kind === 'hseg') {
+      if (el.max != null) chkMax(maxV, el.max);
+      if (el.min != null) chkMin(el.mode === 'atLeastOne' ? maxV : minV, el.min);
+      value = el.max != null ? maxV : minV; at = el.max != null ? maxAt : minAt;
+      el._minV = minV; el._maxV = maxV;
+    } else {
+      if (el.min != null) chkMin(value, el.min);
+      if (el.max != null) chkMax(value, el.max);
+    }
+    if (el.min != null) limitTxt.push('≥ ' + el.min);
+    if (el.max != null) limitTxt.push('≤ ' + el.max);
+    return { id: el.id, kind: el.kind, value, at, pass, margin, min: el.min, max: el.max, note: el.note || '', segMin: minV, segMax: maxV, parts: el.parts };
+  }
+
+  function location(el) {
+    const fh = (h) => h === 0 ? 'V' : Math.abs(h).toFixed(2) + (h < 0 ? 'L' : 'R');
+    const fv = (v) => v === 0 ? 'H' : Math.abs(v).toFixed(2) + (v < 0 ? 'D' : 'U');
+    switch (el.kind) {
+      case 'point': return fv(el.v) + ', ' + fh(el.h);
+      case 'sum': return el.pts.map(p => fv(p[1]) + ' ' + fh(p[0])).join(' + ');
+      case 'hseg': return fv(el.v) + ', ' + fh(el.h1) + ' … ' + fh(el.h2);
+      case 'rect': return fv(el.v2) + '…' + fv(el.v1) + ', ' + fh(el.h1) + '…' + fh(el.h2);
+      case 'below': return fv(el.v) + ' and below, ' + fh(el.h1) + '…' + fh(el.h2);
+      case 'zone': return 'polygon (Table 11)';
+    }
+  }
+
+  function regulationCheck(fa, cls, vBottom) {
+    const table = classTable(cls);
+    return table.map(el => Object.assign(evalElement(el, fa, vBottom), { loc: location(el), def: el }));
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Flux                                                                */
+  /* ------------------------------------------------------------------ */
+  function fluxWeights(g) { // az/el: dΩ = cosV dH dV  (exact band integration in V)
+    const { H, V, nH, nV } = g;
+    const wh = new Float64Array(nH), wv = new Float64Array(nV);
+    for (let j = 0; j < nH; j++) { const a = j > 0 ? (H[j] - H[j - 1]) / 2 : 0, b = j < nH - 1 ? (H[j + 1] - H[j]) / 2 : 0; wh[j] = (a + b) * D2R; }
+    for (let i = 0; i < nV; i++) {
+      const lo = i > 0 ? (V[i] + V[i - 1]) / 2 : V[i], hi = i < nV - 1 ? (V[i] + V[i + 1]) / 2 : V[i];
+      wv[i] = Math.sin(Math.max(-90, Math.min(90, hi)) * D2R) - Math.sin(Math.max(-90, Math.min(90, lo)) * D2R);
+    }
+    return { wh, wv };
+  }
+  function flux(g, dv) {
+    const { wh, wv } = fluxWeights(g);
+    let tot = 0, above = 0, inZone = 0;
+    for (let j = 0; j < g.nH; j++) for (let i = 0; i < g.nV; i++) {
+      const phi = g.I[j * g.nV + i] * wh[j] * wv[i];
+      tot += phi; const v = g.V[i] + dv, h = g.H[j];
+      if (v > 0) above += phi;
+      if (Math.abs(h) <= 30 && v <= 1 && v >= -15) inZone += phi;
+    }
+    return { total: tot, aboveHH: above, zone30x15: inZone };
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Main analysis                                                       */
+  /* ------------------------------------------------------------------ */
+  const APERTURE = { none: 0, '10m': 2 * Math.atan(0.005 / 10) * R2D, '25m': 2 * Math.atan(0.015 / 25) * R2D };
+
+  function fitHonV(pts) { // h = c + d v (least squares)
+    const n = pts.length; let sv = 0, sh = 0, svv = 0, svh = 0;
+    pts.forEach(p => { sv += p.v; sh += p.h; svv += p.v * p.v; svh += p.v * p.h; });
+    const den = n * svv - sv * sv; if (Math.abs(den) < 1e-12) return null;
+    const d = (n * svh - sv * sh) / den, c = (sh - d * sv) / n; return { c, d };
+  }
+
+  function analyse(g, o) {
+    o = Object.assign({ traffic: 'auto', hMethod: 'geom', aimMode: 'full', target: -0.57, cls: 'C', detector: 'none', mountH: 0.65, dvExtra: 0, dhExtra: 0 }, o || {});
+    const f0 = makeSampler(g);
+    const fRaw = withAperture(f0, APERTURE[o.detector] || 0);
+    const floorCd = Math.max(1, 1e-4 * g.Imax);
+    const vMin = g.V[0], vMax = g.V[g.nV - 1];
+    const win = [Math.max(vMin + 0.1, -6), Math.min(vMax - 0.1, 4)];
+    const warnings = [];
+    if (g.vRes > 0.1 + 1e-9) warnings.push('Vertical resolution is ' + g.vRes.toFixed(3) + '° (> 0.1°). The gradient G is under-estimated on coarse grids; use ≤ 0.05° for a reliable sharpness value.');
+    if (g.H[0] > -20 || g.H[g.nH - 1] < 20) warnings.push('H range is ' + g.H[0] + '…' + g.H[g.nH - 1] + '°. R149 test points need at least ±20° (BLL/BRR, 25LL).');
+    if (vMin > -4 || vMax < 4) warnings.push('V range is ' + vMin + '…' + vMax + '°. R149 test points need at least 4°D…4°U.');
+
+    // 1. raw cut-off line (as measured)
+    const rawLine = cutoffLine(fRaw, -10, 10, 0.1, win, floorCd);
+    const sel = (a, b) => rawLine.filter(p => p.h >= a - 1e-9 && p.h <= b + 1e-9 && p.G >= 0.08);
+    const left = sel(-4, -1.5), right = sel(1.5, 4);
+    const vLeft = median(left.map(p => p.v)), vRight = median(right.map(p => p.v));
+    const sL = vscan(fRaw, -2.5, win[0], win[1], floorCd), sR = vscan(fRaw, 2.5, win[0], win[1], floorCd);
+    let type, traffic = null, kinkDir = null;
+    const sharpL = left.length >= 6, sharpR = right.length >= 6;
+    let delta = vRight - vLeft;
+    if (!sharpL && !sharpR) type = 'none';
+    else if (sharpL && sharpR) {
+      if (delta > 0.25) { type = 'asym'; traffic = 'RHT'; }
+      else if (delta < -0.25) { type = 'asym'; traffic = 'LHT'; }
+      else type = 'sym';
+    } else { type = 'asym'; traffic = sharpL ? 'RHT' : 'LHT'; }
+    const detectedTraffic = traffic;
+    if (o.traffic !== 'auto' && type !== 'none') { if (type === 'asym' || o.forceAsym) traffic = o.traffic; }
+    if (o.traffic !== 'auto' && type === 'asym' && detectedTraffic && o.traffic !== detectedTraffic) warnings.push('Traffic side forced to ' + o.traffic + ' although the cut-off shape indicates ' + detectedTraffic + '.');
+
+    const res = {
+      type, traffic, detectedTraffic, rawLine, vLeftRaw: vLeft, vRightRaw: vRight, deltaRaw: delta, warnings,
+      scansRaw: { L: sL, R: sR }, floorCd, options: o, grid: { H0: g.H[0], H1: g.H[g.nH - 1], V0: vMin, V1: vMax, hRes: g.hRes, vRes: g.vRes, nH: g.nH, nV: g.nV, Imax: g.Imax, ImaxAt: g.ImaxAt }
+    };
+    res.fluxRaw = flux(g, 0);
+    if (type === 'none') {
+      res.verdict = 'No distinct cut-off found (G < 0.08 on both sides). The file looks like a driving (high) beam or a beam without cut-off; low-beam cut-off analysis is not applicable.';
+      return res;
+    }
+
+    // 2. canonical frame (RHT): mirror LHT files
+    const m = traffic === 'LHT' ? -1 : 1;
+    res.mirror = m;
+    const fc = transformed(fRaw, m, 0, 0);
+    const fcNoAp = transformed(f0, m, 0, 0);
+
+    // horizontal-part scans at 1.5/2.5/3.5 (L in canonical frame). For symmetric beams also R side.
+    const s25 = vscan(fc, -2.5, win[0], win[1], floorCd), s15 = vscan(fc, -1.5, win[0], win[1], floorCd), s35 = vscan(fc, -3.5, win[0], win[1], floorCd);
+    const vCut = s25.v;
+    res.scan25 = s25; res.scan15 = s15; res.scan35 = s35;
+    const infl = [s15.v, s25.v, s35.v];
+    res.linearity = Math.max(...infl) - Math.min(...infl);
+    res.G25 = s25.G;
+    // sharpness with the regulation's detector apertures (Annex 6 §2): 10 m / Ø10 mm and 25 m / Ø30 mm
+    const sideX = -2.5;
+    res.G_10m = vscan(transformed(withAperture(f0, APERTURE['10m']), m, 0, 0), sideX, win[0], win[1], floorCd, 0.01).G;
+    res.G_25m = vscan(transformed(withAperture(f0, APERTURE['25m']), m, 0, 0), sideX, win[0], win[1], floorCd, 0.01).G;
+    res.G_grid = vscan(fcNoAp, sideX, win[0], win[1], floorCd, 0.01).G;
+    res.nCutoffs = s25.peaks.length;
+    if (type === 'sym') {
+      const s25r = vscan(fc, 2.5, win[0], win[1], floorCd);
+      res.scan25R = s25r; res.G25R = s25r.G;
+    }
+
+    // 3. vertical aim
+    let dv = 0;
+    if (o.aimMode !== 'none') dv = o.target - vCut;
+    dv += o.dvExtra || 0;
+
+    // canonical cut-off line
+    const cLine = cutoffLine(fc, -10, 10, 0.1, win, floorCd);
+    res.cLine = cLine;
+
+    // 4. kink (asymmetric only)
+    let hk = null;
+    if (type === 'asym') {
+      const leftPts = cLine.filter(p => p.h >= -4 && p.h <= -1.5 && p.G >= 0.08);
+      const vL = median(leftPts.map(p => p.v));
+      const rightPts = cLine.filter(p => p.h >= 1.5 && p.h <= 5 && p.G >= 0.08);
+      let vR = median(rightPts.map(p => p.v));
+      if (!isFinite(vR)) vR = vL + 0.8;
+      const step = vR - vL;
+      res.stepHeight = step;
+      // geometric method — fit inclined part
+      const lo = vL + 0.12, hi = vL + Math.max(0.25, 0.8 * step);
+      let incl = cLine.filter(p => p.h > -1.5 && p.h < 6 && p.G >= 0.08 && p.v >= lo && p.v <= hi);
+      // keep contiguous run starting from first departure
+      let geom = { h: NaN, slopeDeg: NaN, pts: incl };
+      if (incl.length >= 3 && (incl[incl.length - 1].v - incl[0].v) > 0.1) {
+        const fit = fitHonV(incl);
+        if (fit) { geom.h = fit.c + fit.d * vL; geom.slopeDeg = Math.abs(fit.d) < 1e-9 ? 90 : Math.atan(1 / fit.d) * R2D; geom.fit = fit; }
+      }
+      if (!isFinite(geom.h)) {
+        const dep = cLine.find(p => p.h > -1.5 && p.G >= 0.08 && p.v > vL + 0.5 * step);
+        geom.h = dep ? dep.h - 0.05 : 0; geom.slopeDeg = 90;
+      }
+      if (geom.slopeDeg < 0) geom.slopeDeg += 180;
+      res.kinkGeom = geom; res.vLcanon = vL;
+
+      // Annex 6 §3.2 instrumental horizontal adjustment — each method iterated from the geometric pre-aim
+      const dvA = dv - (o.dvExtra || 0);
+      const methodA = () => { // (a) horizontal scan on 0.2D line, 5L…5R
+        let dh0 = -geom.h, out = null;
+        for (let it = 0; it < 3; it++) {
+          const fa0 = transformed(fc, 1, dh0, dvA);
+          const hs = hscan(fa0, -0.2, -5, 5, floorCd);
+          out = { h: hs.h - dh0, G: hs.G, scan: hs };
+          if (!isFinite(out.h)) break; dh0 = -out.h;
+        }
+        return out;
+      };
+      const methodB = () => { // (b) vertical scans 2D…2U at 1R, 2R, 3R; line through inflections ∩ line B
+        let dh0 = -geom.h, out = null;
+        for (let it = 0; it < 3; it++) {
+          const fa0 = transformed(fc, 1, dh0, dvA);
+          const pts = [1, 2, 3].map(x => { const s = vscan(fa0, x, -2, 2, floorCd); return { h: x, v: s.v, G: s.G }; });
+          const ok = pts.filter(p => isFinite(p.v) && p.G >= 0.05);
+          out = { h: NaN, G: ok.length ? Math.min(...ok.map(p => p.G)) : 0, pts, valid: false };
+          if (ok.length < 3) { out.reason = 'no cut-off found on all three lines'; break; }
+          const n = 3; let sx = 0, sy = 0, sxx = 0, sxy = 0;
+          ok.forEach(p => { sx += p.h; sy += p.v; sxx += p.h * p.h; sxy += p.h * p.v; });
+          const b = (n * sxy - sx * sy) / (n * sxx - sx * sx), a = (sy - b * sx) / n;
+          const resid = Math.max(...ok.map(p => Math.abs(p.v - (a + b * p.h))));
+          out.a = a; out.b = b; out.slopeDeg = Math.atan(b) * R2D; out.resid = resid;
+          if (b < Math.tan(5 * D2R) || resid > 0.1) { out.reason = 'inclined part does not span 1R…3R (lines hit the upper plateau or the cut-off is not straight there)'; break; }
+          const hStar = (o.target - a) / b;
+          out.h = hStar - dh0; out.valid = true; dh0 = -out.h;
+        }
+        return out;
+      };
+      const ka = methodA(), kb = methodB();
+      res.kinkA = ka; res.kinkB = kb;
+      const chosen = o.hMethod === '3line' ? kb : o.hMethod === '02D' ? ka : { h: geom.h };
+      if (!isFinite(chosen.h)) warnings.push('Selected horizontal-aim method gave no result' + (chosen.reason ? ' (' + chosen.reason + ')' : '') + ' — the geometric kink was used instead.');
+      hk = isFinite(chosen.h) ? chosen.h : geom.h;
+      res.kinkH = hk;
+      res.kinkSlope = geom.slopeDeg;
+      const ang = geom.slopeDeg;
+      res.kinkShape = ang >= 60 ? 'vertical step (≥ 60°)' : ang >= 28 ? '≈ 45° inclined' : '≈ 15° inclined';
+      kinkDir = traffic === 'RHT' ? 'Rising to the RIGHT (right-hand traffic)' : 'Rising to the LEFT (left-hand traffic)';
+      res.kinkDir = kinkDir;
+    }
+
+    let dh = 0;
+    if (o.aimMode === 'full' && hk != null) dh = -hk;
+    dh += o.dhExtra || 0;
+    res.aim = { dv, dh, cutoffRaw: vCut, kinkRaw: hk == null ? null : m * hk };
+    res.cutoffAimed = vCut + dv;
+
+    const fa = transformed(fcNoAp, 1, dh, dv); // aimed photometry without detector smoothing
+    res.sampleAimed = fa;
+    const vBottom = Math.max(vMin + dv, -30);
+
+    // 5. regulation check
+    if (type === 'asym') {
+      res.check = regulationCheck(fa, o.cls, vBottom);
+      const rng = CUTOFF_RANGE[o.cls];
+      const cq = [];
+      cq.push({ id: 'Number of cut-offs', value: res.nCutoffs, limit: '1', pass: res.nCutoffs <= 1, ref: 'Annex 6 §2.1' });
+      const sd = traffic === 'LHT' ? 'R' : 'L', gMin = Math.max(res.G_10m, res.G_25m);
+      cq.push({ id: 'Sharpness G at 2.5°' + sd + ' — minimum (best of 10 m/Ø10 mm, 25 m/Ø30 mm)', value: gMin, limit: '≥ 0.13', pass: gMin >= 0.13, ref: 'Annex 6 §2.2' });
+      cq.push({ id: 'Sharpness G at 2.5°' + sd + ' — maximum (25 m/Ø30 mm)', value: res.G_25m, limit: '≤ 0.40', pass: res.G_25m <= 0.40, ref: 'Annex 6 §2.2' });
+      cq.push({ id: 'Linearity 1.5°–3.5° (inflection spread)', value: res.linearity, limit: '≤ 0.20°', pass: res.linearity <= 0.2, ref: 'Annex 6 §2.3' });
+      if (o.hMethod === '02D') cq.push({ id: 'Kink gradient on 0.2D line', value: res.kinkA.G, limit: '≥ 0.08', pass: res.kinkA.G >= 0.08, ref: 'Annex 6 §3.2 (a)' });
+      if (o.hMethod === '3line') cq.push({ id: 'Kink gradient on 1R/2R/3R lines (min)', value: res.kinkB.G, limit: '≥ 0.08', pass: res.kinkB.G >= 0.08, ref: 'Annex 6 §3.2 (b)' });
+      const ca = res.cutoffAimed;
+      cq.push({ id: 'Aimed cut-off position (Class ' + o.cls + ')', value: ca, limit: rng[0] === rng[1] ? Math.abs(rng[0]) + '°D' : Math.abs(rng[1]) + '°D … ' + Math.abs(rng[0]) + '°D', pass: ca >= rng[0] - 0.005 && ca <= rng[1] + 0.005, ref: 'Table 10 B' });
+      if (o.aimMode !== 'full') cq.push({ id: 'Kink horizontal position from V-V', value: hk + dh, limit: '|x| ≤ 0.5°', pass: Math.abs(hk + dh) <= 0.5, ref: 'visual aim tolerance (info)' });
+      res.cutoffChecks = cq;
+
+      // aim robustness
+      const dvs = [-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3], dhs = [-0.5, -0.25, 0, 0.25, 0.5];
+      res.robust = { dvs, dhs, grid: dvs.map(a => dhs.map(b => {
+        const fx = transformed(fcNoAp, 1, dh + b, dv + a);
+        const r = regulationCheck(fx, o.cls, vBottom);
+        return r.filter(x => !x.pass).map(x => x.id);
+      })) };
+    }
+
+    // 6. extra info
+    const fl = flux(g, dv);
+    res.flux = fl;
+    // Imax (aimed, canonical)
+    res.ImaxAimed = { I: g.Imax, h: m * g.ImaxAt.h + dh, v: g.ImaxAt.v + dv };
+    res.IHV = fa(0, 0);
+    res.I75R = fa(1.15, -0.57); res.IB50L = fa(-3.43, 0.57); res.I50V = fa(0, -0.86);
+    res.ratio75RB50L = res.I75R / Math.max(res.IB50L, 1e-6);
+    // max intensity above H-H in ±10°
+    let mxUp = 0, mxUpAt = null;
+    for (let h = -10; h <= 10.001; h += 0.1) for (let v = 0; v <= 4.001; v += 0.05) { const x = fa(h, v); if (x > mxUp) { mxUp = x; mxUpAt = { h, v }; } }
+    res.maxAboveHH = { I: mxUp, at: mxUpAt };
+    // beam widths on 25 m line (1.72D) and 2D
+    const width = (vLine, thr) => {
+      let l = null, r = null;
+      for (let h = 0; h >= -60; h -= 0.1) { if (fa(h, vLine) >= thr) l = h; else if (l !== null && h < l - 1) break; }
+      for (let h = 0; h <= 60; h += 0.1) { if (fa(h, vLine) >= thr) r = h; else if (r !== null && h > r + 1) break; }
+      return { left: l, right: r };
+    };
+    res.widths = [
+      { line: '1.72D (25 m)', thr: 1000, ...width(-1.72, 1000) },
+      { line: '1.72D (25 m)', thr: 3000, ...width(-1.72, 3000) },
+      { line: '3.0D', thr: 1000, ...width(-3.0, 1000) }
+    ];
+    // road range
+    const hm = o.mountH;
+    const range = (y, thr) => {
+      for (let d = 300; d >= 2; d -= 0.5) {
+        const rr = Math.sqrt(d * d + y * y);
+        const H = Math.atan2(y, d) * R2D, Vv = -Math.atan(hm / rr) * R2D;
+        const r3 = Math.pow(rr * rr + hm * hm, 1.5);
+        const E = fa(H, Vv) * hm / r3;
+        if (E >= thr) return d;
+      }
+      return null;
+    };
+    res.ranges = [
+      { name: 'Straight ahead (V-V)', y: 0 },
+      { name: 'Right road edge (3.5 m right)', y: 3.5 },
+      { name: 'Left (3.5 m left, oncoming lane)', y: -3.5 }
+    ].map(x => ({ ...x, r1: range(x.y, 1), r3: range(x.y, 3) }));
+    res.geoReach = res.cutoffAimed < 0 ? hm / Math.tan(-res.cutoffAimed * D2R) : null;
+    // human-readable type
+    if (type === 'asym') res.typeLabel = 'Asymmetric passing beam — ' + (traffic === 'RHT' ? 'right-hand traffic (RHT)' : 'left-hand traffic (LHT)');
+    else res.typeLabel = 'Symmetric passing beam (flat cut-off, no kink)';
+    if (type === 'sym') res.verdict = 'Symmetric beam: cut-off analysis done; the R149 asymmetric tables (Classes C/V/E/W) do not apply. Symmetric classes (AS…ES) are not checked in this version.';
+    return res;
+  }
+
+  const api = { parseIES, buildGrid, makeSampler, transformed, vscan, hscan, analyse, classTable, regulationCheck, CUTOFF_RANGE, ZONE_IIIa, flux, APERTURE };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.BCCore = api;
+})(typeof window !== 'undefined' ? window : this);
+
+</script>
+<script>
+(function () {
+'use strict';
+  /* Synthetic example beam (clearly labelled in UI): RHT, 15° kink, cut-off at 0.25°D raw, kink 0.4°R raw */
+  function syntheticExample(p) {
+    p = Object.assign({ vcut: -0.25, hk: 0.4, slope: 15, step: 0.75, w: 0.13, imax: 33000 }, p || {});
+    const H = [], V = [];
+    for (let h = -45; h <= 45.0001; h += 0.2) H.push(+h.toFixed(2));
+    for (let v = -15; v <= 12.0001; v += 0.05) V.push(+v.toFixed(2));
+    const nH = H.length, nV = V.length, I = new Float64Array(nH * nV);
+    const tn = Math.tan(p.slope * Math.PI / 180);
+    let Imax = 0, at = null;
+    for (let j = 0; j < nH; j++) {
+      const h = H[j];
+      const c = p.vcut + Math.min(Math.max(tn * (h - p.hk), 0), p.step);
+      const wh = h < 1.8 ? 3.6 : 6.5;
+      for (let i = 0; i < nV; i++) {
+        const v = V[i];
+        const base = p.imax * Math.exp(-(((h - 1.8) / wh) ** 2) - (((v - (p.vcut - 0.75)) / 1.15) ** 2))
+          + 7500 * Math.exp(-((h / 20) ** 2) - (((v - (p.vcut - 2.2)) / 3.2) ** 2))
+          + 1500 * Math.exp(-((h / 38) ** 2) - (((v - (p.vcut - 5)) / 6) ** 2));
+        const S = 1 / (1 + Math.exp((v - c) / p.w));
+        let x = base * S + (v > c ? 230 * Math.exp(-(((v - c) / 5) ** 2)) * Math.exp(-((h / 30) ** 2)) : 0) + 4;
+        I[j * nV + i] = x; if (x > Imax) { Imax = x; at = { h, v }; }
+      }
+    }
+    const res = (a) => +(a[1] - a[0]).toFixed(4);
+    return { H: Float64Array.from(H), V: Float64Array.from(V), I, nH, nV, Imax, ImaxAt: at, hRes: res(H), vRes: res(V), notes: ['Built-in synthetic example (RHT, 15° kink). Not a real lamp.'] };
+  }
+
+
+const C = window.BCCore;
+const $ = (id) => document.getElementById(id);
+const state = { ies: null, grid: null, name: '', res: null, view: 'aimed', isExample: false };
+const fmt = (x, d = 0) => (x == null || !isFinite(x)) ? '—' : Number(x).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtCd = (x) => fmt(x, 0) + ' cd';
+const angV = (v, d = 2) => !isFinite(v) ? '—' : (Math.abs(v) < 0.005 ? '0.00° (H-H)' : Math.abs(v).toFixed(d) + '°' + (v < 0 ? 'D' : 'U'));
+const angH = (h, d = 2) => !isFinite(h) ? '—' : (Math.abs(h) < 0.005 ? '0.00° (V-V)' : Math.abs(h).toFixed(d) + '°' + (h < 0 ? 'L' : 'R'));
+const swapLR = (s) => s.replace(/[LR]/g, ch => ch === 'L' ? 'R' : 'L');
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function opts() {
+  return {
+    cls: 'C', traffic: $('optTraffic').value,
+    aimMode: $('optAim').value, hMethod: $('optHMethod').value,
+    target: -Math.abs(parseFloat($('optTarget').value) || 0.57),
+    mountH: Math.max(0.1, parseFloat($('optMount').value) || 0.65),
+    dvExtra: parseFloat($('optDv').value) || 0, dhExtra: parseFloat($('optDh').value) || 0,
+    detector: $('optDet').value
+  };
+}
+
+function setStatus(t) { $('status').textContent = t; }
+
+/* ---------- loading ---------- */
+function loadText(text, name) {
+  setStatus('Reading file…');
+  setTimeout(() => {
+    try {
+      state.ies = C.parseIES(text); state.name = name; state.isExample = false;
+      buildAndRun();
+    } catch (e) { showError(e.message); }
+  }, 20);
+}
+function loadExample() {
+  state.ies = null; state.isExample = true; state.name = 'Built-in example: synthetic RHT low beam, 15° kink (not a real lamp)';
+  buildAndRun();
+}
+function buildAndRun() {
+  try {
+    if (state.isExample) state.grid = syntheticExample();
+    else state.grid = C.buildGrid(state.ies, { flipV: $('optFlipV').checked, flipH: $('optFlipH').checked });
+    run();
+  } catch (e) { showError(e.message); }
+}
+function run() {
+  setStatus('Analysing…');
+  setTimeout(() => {
+    try {
+      const t0 = performance.now();
+      state.res = C.analyse(state.grid, opts());
+      render();
+      setStatus('Analysed in ' + Math.round(performance.now() - t0) + ' ms');
+    } catch (e) { console.error(e); showError('Analysis failed: ' + e.message); }
+  }, 20);
+}
+function showError(msg) {
+  $('banners').innerHTML = '<div class="banner bad"><strong>Could not read the file.</strong> ' + esc(msg) + ' Check that it is an IES LM-63 file with H-V (Type A/B) or Type C photometry.</div>';
+  setStatus('Error');
+}
+
+const drop = $('drop'), fileIn = $('file');
+drop.addEventListener('click', () => fileIn.click());
+drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileIn.click(); } });
+fileIn.addEventListener('change', () => { const f = fileIn.files[0]; if (f) readFile(f); });
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', (e) => { const f = e.dataTransfer.files[0]; if (f) readFile(f); });
+document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) readFile(f); });
+function readFile(f) { const r = new FileReader(); r.onload = () => loadText(r.result, f.name); r.onerror = () => showError('The browser could not read the file.'); r.readAsText(f); }
+$('btnExample').addEventListener('click', loadExample);
+['optFlipV', 'optFlipH'].forEach(id => $(id).addEventListener('change', () => { if (!state.isExample && state.ies) buildAndRun(); }));
+['optTraffic', 'optAim', 'optHMethod', 'optTarget', 'optMount', 'optDv', 'optDh', 'optDet'].forEach(id => $(id).addEventListener('change', () => { if (state.grid) run(); }));
+$('viewAimed').addEventListener('click', () => { state.view = 'aimed'; $('viewAimed').setAttribute('aria-pressed', 'true'); $('viewRaw').setAttribute('aria-pressed', 'false'); drawMap(); });
+$('viewRaw').addEventListener('click', () => { state.view = 'raw'; $('viewRaw').setAttribute('aria-pressed', 'true'); $('viewAimed').setAttribute('aria-pressed', 'false'); drawMap(); });
+window.addEventListener('resize', () => { if (state.res) { clearTimeout(window.__rz); window.__rz = setTimeout(drawCharts, 150); } });
+if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => state.res && drawCharts());
+new MutationObserver(() => state.res && drawCharts()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+/* ---------- render ---------- */
+function render() {
+  const r = state.res, o = r.options;
+  $('fileName').textContent = state.name;
+  const m = r.mirror || 1;
+  const lr = (s) => m === -1 ? swapLR(s) : s;
+  r._lr = lr;
+  // banners
+  const warn = [].concat(state.grid.notes || [], r.warnings || []);
+  let b = '';
+  if (r.verdict && r.type !== 'asym') b += '<div class="banner' + (r.type === 'none' ? ' bad' : '') + '">' + esc(r.verdict) + '</div>';
+  if (warn.length) b += '<div class="banner"><strong>Notes on this file</strong><ul>' + warn.map(w => '<li>' + esc(w) + '</li>').join('') + '</ul></div>';
+  $('banners').innerHTML = b;
+
+  // tiles
+  const T = [];
+  if (r.type === 'none') {
+    T.push(tile('Beam type', 'No cut-off', 'Max G below 0.08 on both sides', 'na'));
+    T.push(tile('Imax', fmtCd(r.grid.Imax), 'at ' + angH(r.grid.ImaxAt.h) + ', ' + angV(r.grid.ImaxAt.v), ''));
+    T.push(tile('Luminous flux', fmt(r.fluxRaw.total, 0) + ' lm', 'integrated over the file grid', ''));
+  } else {
+    const asym = r.type === 'asym';
+    T.push(tile('Beam type', asym ? 'Asymmetric · ' + r.traffic : 'Symmetric', asym ? (r.traffic === 'RHT' ? 'Right-hand traffic' : 'Left-hand traffic') + (o.traffic !== 'auto' ? ' (set manually)' : ' (detected)') : 'Flat cut-off, no kink', ''));
+    if (asym) T.push(tile('Kink', (r.traffic === 'RHT' ? 'Rises to the right' : 'Rises to the left'), r.kinkShape + ', slope ' + fmt(r.kinkSlope, 1) + '°, step ' + fmt(r.stepHeight, 2) + '°', ''));
+    T.push(tile('Horizontal cut-off', angV(r.aim.cutoffRaw), 'in file, at 2.5°' + (m === -1 ? 'R' : 'L') + ' · aimed ' + angV(r.cutoffAimed), ''));
+    T.push(tile('Cut-off gradient G', fmt(r.G_grid, 3), '10 m: ' + fmt(r.G_10m, 3) + ' · 25 m: ' + fmt(r.G_25m, 3) + ' · min 0.13', r.G_10m >= 0.13 || r.G_25m >= 0.13 ? 'ok' : 'bad'));
+    if (asym) T.push(tile('Kink position', angH(r.aim.kinkRaw), 'in file (' + methodName(o.hMethod) + ')', ''));
+    if (asym) {
+      const fails = r.check.filter(x => !x.pass).length + r.cutoffChecks.filter(x => !x.pass).length;
+      const n = r.check.length + r.cutoffChecks.length;
+      T.push(tile('R149 Class ' + o.cls, fails ? 'Fails ' + fails + ' of ' + n : 'Passes all ' + n, fails ? 'see the tables below' : 'photometry and cut-off quality', fails ? 'bad' : 'ok'));
+    } else T.push(tile('R149 check', 'Not applicable', 'Asymmetric tables only', 'na'));
+  }
+  $('tiles').innerHTML = T.join('');
+
+  renderCutTable(); renderReg(); renderRobust(); renderExtra(); renderFile();
+  $('regPanel').classList.toggle('hidden', r.type !== 'asym');
+  $('robPanel').classList.toggle('hidden', r.type !== 'asym');
+  drawCharts();
+}
+function tile(k, v, s, cls) { return '<div class="tile' + (cls ? ' verdict-' + cls : '') + '"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div><div class="s">' + esc(s) + '</div></div>'; }
+function methodName(mth) { return { geom: 'geometric kink', '02D': '0.2D line method', '3line': 'three-line method' }[mth]; }
+function pill(p) { return p == null ? '<span class="pill na">INFO</span>' : p ? '<span class="pill ok">PASS</span>' : '<span class="pill bad">FAIL</span>'; }
+
+function renderCutTable() {
+  const r = state.res, t = $('tblCut');
+  if (r.type === 'none') { t.innerHTML = ''; $('kinkKv').innerHTML = ''; return; }
+  let rows = [];
+  if (r.type === 'asym') rows = r.cutoffChecks.map(c => ({ id: c.id, value: typeof c.value === 'number' ? (c.id.startsWith('Aimed') ? angV(c.value) : c.id.startsWith('Kink horizontal') ? angH(c.value) : c.id.startsWith('Number') ? String(c.value) : (c.id.startsWith('Linearity') ? fmt(c.value, 3) + '°' : fmt(c.value, 3))) : c.value, limit: c.limit, pass: c.pass, ref: c.ref }));
+  else rows = [
+    { id: 'Number of cut-offs (2.5°L)', value: String(r.nCutoffs), limit: '1', pass: r.nCutoffs <= 1, ref: 'info' },
+    { id: 'G at 2.5°L / 2.5°R', value: fmt(r.G25, 3) + ' / ' + fmt(r.G25R, 3), limit: '≥ 0.13', pass: null, ref: 'info' },
+    { id: 'Linearity 1.5°–3.5°L', value: fmt(r.linearity, 3) + '°', limit: '≤ 0.20°', pass: null, ref: 'info' }
+  ];
+  t.innerHTML = '<thead><tr><th>Item</th><th class="num">Value</th><th class="num">Requirement</th><th>Reference</th><th>Result</th></tr></thead><tbody>' +
+    rows.map(x => '<tr class="' + (x.pass === false ? 'fail' : '') + '"><td>' + esc(x.id) + '</td><td class="num">' + esc(x.value) + '</td><td class="num">' + esc(x.limit) + '</td><td class="sub">' + esc(x.ref) + '</td><td>' + pill(x.pass) + '</td></tr>').join('') + '</tbody>';
+  const m = r.mirror || 1;
+  const kv = [];
+  kv.push(['Cut-off in file at 1.5° / 2.5° / 3.5°' + (m === -1 ? 'R' : 'L'), [r.scan15.v, r.scan25.v, r.scan35.v].map(v => fmt(v, 3)).join(' / ') + '°']);
+  kv.push(['Vertical aim applied', fmt(r.aim.dv, 3) + '°']);
+  if (r.type === 'asym') {
+    kv.push(['Kink, geometric (file)', angH(m * r.kinkGeom.h)]);
+    kv.push(['Kink, 0.2D line method (file)', isFinite(r.kinkA.h) ? angH(m * r.kinkA.h) + ' · G ' + fmt(r.kinkA.G, 3) : 'no result']);
+    kv.push(['Kink, three-line method (file)', r.kinkB.valid ? angH(m * r.kinkB.h) + ' · slope ' + fmt(r.kinkB.slopeDeg, 1) + '°' : 'not applicable']);
+    kv.push(['Inclined part slope (geometric)', fmt(r.kinkSlope, 1) + '°']);
+    kv.push(['Upper cut-off step above horizontal part', fmt(r.stepHeight, 2) + '°']);
+    kv.push(['Horizontal aim applied', fmt(m * r.aim.dh, 3) + '°']);
+  }
+  $('kinkKv').innerHTML = kv.map(([a, b]) => '<div><span>' + esc(a) + '</span><span>' + esc(b) + '</span></div>').join('');
+  if (r.type === 'asym' && !r.kinkB.valid && r.kinkB.reason) $('kinkKv').insertAdjacentHTML('beforeend', '<div><span>Three-line method</span><span>' + esc(r.kinkB.reason) + '</span></div>');
+}
+
+function renderReg() {
+  const r = state.res, o = r.options;
+  if (r.type !== 'asym') { $('tblReg').innerHTML = ''; return; }
+  const lr = r._lr;
+  $('regTitle').textContent = 'Photometric check, UN R149 Class ' + o.cls;
+  $('regSub').textContent = 'Table 9 values for ' + (r.traffic === 'RHT' ? 'right-hand traffic' : 'left-hand traffic (L and R swapped)') + '. Aimed: cut-off ' + angV(r.cutoffAimed) + ', kink ' + (o.aimMode === 'full' ? 'on V-V' : 'as in file') + '.';
+  const rows = r.check.map(c => {
+    const lim = [c.min != null ? '≥ ' + fmt(c.min) : '', c.max != null ? '≤ ' + fmt(c.max) : ''].filter(Boolean).join('  ');
+    const mg = isFinite(c.margin) ? c.margin : null;
+    const w = mg == null ? 0 : Math.min(1, Math.abs(mg)) * 70;
+    const where = c.at && (c.kind !== 'point') ? 'at ' + lr(angV(c.at.v, 2) + ' ' + angH(c.at.h, 2)) : '';
+    let val = fmt(c.value);
+    if (c.kind === 'sum' && c.parts) val += '<div class="sub">' + c.parts.map(x => fmt(x)).join(' + ') + '</div>';
+    if (c.kind === 'hseg') val = (c.max != null ? 'max ' + fmt(c.segMax) : '') + (c.min != null ? (c.max != null ? '<div class="sub">' : '') + (c.def.mode === 'atLeastOne' ? 'best ' + fmt(c.segMax) : 'min ' + fmt(c.segMin)) + (c.max != null ? '</div>' : '') : '');
+    return '<tr class="' + (c.pass ? '' : 'fail') + '"><td><b>' + esc(lr(c.id)) + '</b>' + (c.note ? '<div class="sub">' + esc(lr(c.note)) + '</div>' : '') + '</td><td class="sub">' + esc(lr(c.loc)) + (where ? '<br>' + esc(where) : '') + '</td><td class="num">' + val + '</td><td class="num">' + lim + '</td>' +
+      '<td class="num"><div class="marg"><span class="mono">' + (mg == null ? '—' : (mg >= 0 ? '+' : '') + (mg * 100).toFixed(0) + '%') + '</span><span class="bar"><i class="' + (mg < 0 ? 'neg' : '') + '" style="width:' + w + 'px"></i></span></div></td><td>' + pill(c.pass) + '</td></tr>';
+  }).join('');
+  $('tblReg').innerHTML = '<thead><tr><th>Item</th><th>Position</th><th class="num">Measured (cd)</th><th class="num">Requirement (cd)</th><th class="num">Margin</th><th>Result</th></tr></thead><tbody>' + rows + '</tbody>';
+}
+
+function renderRobust() {
+  const r = state.res;
+  if (r.type !== 'asym') { $('tblRob').innerHTML = ''; return; }
+  const m = r.mirror || 1, lr = r._lr;
+  const { dvs, dhs, grid } = r.robust;
+  const order = dvs.map((_, i) => i).reverse(); // top row = beam raised
+  let h = '<thead><tr><th>Vertical \\ horizontal</th>' + dhs.map(x => '<th>' + (x === 0 ? '0' : (Math.abs(x).toFixed(2) + '°' + ((m * x) < 0 ? 'L' : 'R'))) + '</th>').join('') + '</tr></thead><tbody>';
+  order.forEach(i => {
+    const a = dvs[i];
+    h += '<tr><th>' + (a === 0 ? 'nominal' : Math.abs(a).toFixed(1) + '° ' + (a > 0 ? 'up' : 'down')) + '</th>';
+    grid[i].forEach((f, j) => {
+      const nom = a === 0 && dhs[j] === 0;
+      h += '<td class="c ' + (f.length ? 'bad' : 'ok') + (nom ? ' nom' : '') + '" title="' + esc(f.length ? f.map(lr).join(', ') : 'all pass') + '">' + (f.length ? f.length + ' fail' : 'pass') + '</td>';
+    });
+    h += '</tr>';
+  });
+  $('tblRob').innerHTML = h + '</tbody>';
+}
+
+function renderExtra() {
+  const r = state.res, o = r.options;
+  if (r.type === 'none') {
+    $('extraKv').innerHTML = kvHtml([['Total luminous flux (file)', fmt(r.fluxRaw.total, 0) + ' lm'], ['Imax', fmtCd(r.grid.Imax)]]);
+    $('tblRange').innerHTML = ''; return;
+  }
+  const lr = r._lr, m = r.mirror || 1;
+  const kv = [
+    ['Total luminous flux (lamp output)', fmt(r.flux.total, 0) + ' lm'],
+    ['Flux above H-H (aimed)', fmt(r.flux.aboveHH, 1) + ' lm (' + fmt(100 * r.flux.aboveHH / r.flux.total, 1) + '%)'],
+    ['Flux in 30°L–30°R, 15°D–1°U (aimed)', fmt(r.flux.zone30x15, 0) + ' lm'],
+    ['Imax (aimed position)', fmtCd(r.ImaxAimed.I) + ' at ' + angV(r.ImaxAimed.v) + ' ' + angH(m * r.ImaxAimed.h)],
+    ['Intensity at HV', fmtCd(r.IHV)],
+    [lr('Max above H-H within 10°L–10°R'), fmtCd(r.maxAboveHH.I) + ' at ' + angV(r.maxAboveHH.at.v) + ' ' + angH(m * r.maxAboveHH.at.h)],
+    [lr('75R / B50L (performance to glare)'), fmt(r.ratio75RB50L, 1)],
+    [lr('50V'), fmtCd(r.I50V)],
+    ['Cut-off meets flat road at', r.geoReach ? fmt(r.geoReach, 1) + ' m' : '—'],
+  ];
+  r.widths.forEach(w => kv.push(['Spread on ' + w.line + ', I ≥ ' + fmt(w.thr) + ' cd', (w.left != null ? angH(m * w.left, 1) : '—') + ' … ' + (w.right != null ? angH(m * w.right, 1) : '—')]));
+  const lampFlux = r.flux.total;
+  kv.push(['R48 2 000 lm threshold', lampFlux > 2000 ? 'Lamp output already above 2 000 lm' : 'Refers to light-source objective flux, not lamp output']);
+  $('extraKv').innerHTML = kvHtml(kv);
+  $('tblRange').innerHTML = '<thead><tr><th>Road line (horizontal illuminance, h = ' + fmt(o.mountH, 2) + ' m)</th><th class="num">1 lx reach</th><th class="num">3 lx reach</th></tr></thead><tbody>' +
+    r.ranges.map(x => '<tr><td>' + esc(x.y === 0 ? x.name : (m === -1 ? (x.y > 0 ? 'Left road edge (3.5 m left, LHT kerb side)' : 'Right (3.5 m right, oncoming lane)') : x.name)) + '</td><td class="num">' + (x.r1 ? fmt(x.r1, 1) + ' m' : '—') + '</td><td class="num">' + (x.r3 ? fmt(x.r3, 1) + ' m' : '—') + '</td></tr>').join('') + '</tbody>';
+}
+function kvHtml(kv) { return kv.map(([a, b]) => '<div><span>' + esc(a) + '</span><span>' + esc(b) + '</span></div>').join(''); }
+
+function renderFile() {
+  const g = state.grid, r = state.res, ies = state.ies;
+  const kv = [];
+  if (ies) {
+    const k = ies.keywords;
+    if (k.TEST) kv.push(['[TEST]', k.TEST]);
+    if (k.MANUFAC) kv.push(['[MANUFAC]', k.MANUFAC]);
+    if (k.LUMINAIRE) kv.push(['[LUMINAIRE]', k.LUMINAIRE]);
+    if (k.LAMP) kv.push(['[LAMP]', k.LAMP]);
+    kv.push(['Format', ies.format || '—']);
+    kv.push(['Photometric type', { 1: 'Type C', 2: 'Type B', 3: 'Type A' }[ies.hdr.photType] || String(ies.hdr.photType)]);
+    kv.push(['Candela multiplier × ballast factor', fmt(ies.hdr.multiplier, 4) + ' × ' + fmt(ies.hdr.ballast, 3)]);
+    kv.push(['Lumens per lamp (header)', ies.hdr.lumensPerLamp < 0 ? 'absolute photometry (−1)' : fmt(ies.hdr.lumensPerLamp, 0)]);
+  }
+  kv.push(['Grid', g.nH + ' H × ' + g.nV + ' V']);
+  kv.push(['H range / step', fmt(g.H[0], 1) + '° … ' + fmt(g.H[g.nH - 1], 1) + '° / ' + fmt(g.hRes, 3) + '°']);
+  kv.push(['V range / step', fmt(g.V[0], 1) + '° … ' + fmt(g.V[g.nV - 1], 1) + '° / ' + fmt(g.vRes, 3) + '°']);
+  kv.push(['Imax in file', fmtCd(g.Imax) + ' at ' + angH(g.ImaxAt.h) + ', ' + angV(g.ImaxAt.v)]);
+  $('fileKv').innerHTML = kvHtml(kv);
+}
+
+/* ---------- charts ---------- */
+function drawCharts() { drawMap(); drawVScan(); drawCLine(); }
+function setup(cv, h) {
+  const dpr = cv.__dpr || window.devicePixelRatio || 1, w = cv.__w || Math.max(280, cv.clientWidth || cv.parentElement.clientWidth);
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.height = h + 'px';
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+const CMAP = ['#0a0f2c', '#16307a', '#1f5fb8', '#1c97b3', '#3cbf8a', '#b5dc4d', '#ffe14d', '#fff6d6'];
+function cmap(t) {
+  t = Math.max(0, Math.min(1, t)); const n = CMAP.length - 1, x = t * n, i = Math.min(n - 1, Math.floor(x)), f = x - i;
+  const a = hex(CMAP[i]), b = hex(CMAP[i + 1]);
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+}
+function hex(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+
+function drawMap(tgt) {
+  const r = state.res; if (!r) return;
+  const on = !tgt, cv = tgt || $('map'), H = Math.max(300, Math.min(440, (cv.__w || cv.clientWidth || 800) * 0.42));
+  const { ctx, w, h } = setup(cv, H);
+  const padL = 46, padR = 64, padT = 10, padB = 34;
+  const pw = w - padL - padR, ph = h - padT - padB;
+  const hx = [-25, 25], vy = [-8, 6];
+  const X = (hh) => padL + (hh - hx[0]) / (hx[1] - hx[0]) * pw, Y = (vv) => padT + (vy[1] - vv) / (vy[1] - vy[0]) * ph;
+  const m = r.mirror || 1;
+  const aimed = state.view === 'aimed' && r.type !== 'none';
+  const f0 = C.makeSampler(state.grid);
+  const f = aimed ? ((hd, v) => r.sampleAimed(m * hd, v)) : f0;
+  if (on) state.mapF = f;
+  // raster
+  const nx = Math.min(500, Math.round(pw)), ny = Math.min(280, Math.round(ph));
+  const off = document.createElement('canvas'); off.width = nx; off.height = ny;
+  const oc = off.getContext('2d'), img = oc.createImageData(nx, ny);
+  const Imax = state.grid.Imax, lo = Math.log10(Math.max(10, Imax * 5e-4)), hi = Math.log10(Imax);
+  const L = new Float32Array(nx * ny);
+  for (let j = 0; j < ny; j++) {
+    const vv = vy[1] - (j + 0.5) / ny * (vy[1] - vy[0]);
+    for (let i = 0; i < nx; i++) {
+      const hh = hx[0] + (i + 0.5) / nx * (hx[1] - hx[0]);
+      const I = f(hh, vv); const l = Math.log10(Math.max(I, 1)); L[j * nx + i] = l;
+      const c = cmap((l - lo) / (hi - lo)); const k = (j * nx + i) * 4;
+      img.data[k] = c[0]; img.data[k + 1] = c[1]; img.data[k + 2] = c[2]; img.data[k + 3] = 255;
+    }
+  }
+  oc.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = true; ctx.drawImage(off, padL, padT, pw, ph);
+  // contours (marching squares)
+  const levels = [625, 1750, 5100, 10100, 20000].filter(x => x < Imax);
+  ctx.save(); ctx.beginPath(); ctx.rect(padL, padT, pw, ph); ctx.clip();
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 0.8;
+  const sx = pw / nx, sy = ph / ny;
+  levels.forEach(lv => {
+    const t = Math.log10(lv); ctx.beginPath();
+    for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+      const a = L[j * nx + i], b = L[j * nx + i + 1], c = L[(j + 1) * nx + i + 1], d = L[(j + 1) * nx + i];
+      const code = (a > t ? 8 : 0) | (b > t ? 4 : 0) | (c > t ? 2 : 0) | (d > t ? 1 : 0);
+      if (code === 0 || code === 15) continue;
+      const x0 = padL + (i + 0.5) * sx, y0 = padT + (j + 0.5) * sy;
+      const top = [x0 + sx * (t - a) / (b - a), y0], right = [x0 + sx, y0 + sy * (t - b) / (c - b)], bot = [x0 + sx * (t - d) / (c - d), y0 + sy], left = [x0, y0 + sy * (t - a) / (d - a)];
+      const segs = { 1: [[left, bot]], 2: [[bot, right]], 3: [[left, right]], 4: [[top, right]], 5: [[left, top], [bot, right]], 6: [[top, bot]], 7: [[left, top]], 8: [[left, top]], 9: [[top, bot]], 10: [[top, right], [left, bot]], 11: [[top, right]], 12: [[left, right]], 13: [[bot, right]], 14: [[left, bot]] }[code];
+      segs.forEach(([p, q]) => { ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); });
+    }
+    ctx.stroke();
+  });
+  // axes lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(padL, Y(0)); ctx.lineTo(padL + pw, Y(0)); ctx.moveTo(X(0), padT); ctx.lineTo(X(0), padT + ph); ctx.stroke();
+  const cutCol = css('--cut') || '#ff7eb6';
+  if (aimed && r.type === 'asym') {
+    // zone III
+    const poly = C.ZONE_IIIa;
+    ctx.setLineDash([5, 4]); ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath();
+    poly.forEach((p, k) => { const x = X(m * p[0]), y = Y(p[1]); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+    // test elements
+    ctx.font = '11px ' + css('--font-mono');
+    r.check.forEach(c => {
+      const col = c.pass ? '#42be65' : '#ff5c66';
+      const d = c.def; ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2;
+      const mark = (hh, vv, label) => { ctx.beginPath(); ctx.arc(X(m * hh), Y(vv), 3.5, 0, 2 * Math.PI); ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 0.8; ctx.stroke(); if (label) { ctx.fillStyle = '#fff'; ctx.fillText(label, X(m * hh) + 5, Y(vv) - 4); } };
+      if (d.kind === 'point') mark(d.h, d.v, r._lr(d.id));
+      else if (d.kind === 'sum') d.pts.forEach(p => mark(p[0], p[1], ''));
+      else if (d.kind === 'hseg') { ctx.beginPath(); ctx.moveTo(X(m * d.h1), Y(d.v)); ctx.lineTo(X(m * d.h2), Y(d.v)); ctx.stroke(); }
+      else if (d.kind === 'rect') { ctx.lineWidth = 1.2; ctx.strokeRect(Math.min(X(m * d.h1), X(m * d.h2)), Y(d.v2), Math.abs(X(m * d.h2) - X(m * d.h1)), Y(d.v1) - Y(d.v2)); }
+      else if (d.kind === 'below') { ctx.lineWidth = 1.2; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(X(m * d.h1), Y(d.v)); ctx.lineTo(X(m * d.h2), Y(d.v)); ctx.stroke(); ctx.setLineDash([]); }
+    });
+  }
+  // cut-off line overlay
+  if (r.type !== 'none') {
+    const pts = aimed ? r.cLine.map(p => ({ h: m * (p.h + r.aim.dh), v: p.v + r.aim.dv, G: p.G })) : r.rawLine.map(p => ({ h: p.h, v: p.v, G: p.G }));
+    ctx.strokeStyle = cutCol; ctx.lineWidth = 2; ctx.beginPath(); let pen = false;
+    pts.forEach(p => { if (p.G >= 0.08 && isFinite(p.v)) { pen ? ctx.lineTo(X(p.h), Y(p.v)) : ctx.moveTo(X(p.h), Y(p.v)); pen = true; } else pen = false; });
+    ctx.stroke();
+    if (r.type === 'asym') {
+      const kh = aimed ? m * (r.kinkH + r.aim.dh) : r.aim.kinkRaw, kv = aimed ? r.cutoffAimed : r.aim.cutoffRaw;
+      ctx.fillStyle = cutCol; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2; ctx.beginPath();
+      const x = X(kh), y = Y(kv); ctx.moveTo(x, y - 6); ctx.lineTo(x + 6, y); ctx.lineTo(x, y + 6); ctx.lineTo(x - 6, y); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+  }
+  ctx.restore();
+  // frame & ticks
+  const tc = css('--text-2'), fc = css('--font-mono');
+  ctx.strokeStyle = css('--rule'); ctx.lineWidth = 1; ctx.strokeRect(padL, padT, pw, ph);
+  ctx.fillStyle = tc; ctx.font = '11px ' + fc; ctx.textAlign = 'center';
+  for (let hh = -25; hh <= 25; hh += 5) ctx.fillText(hh === 0 ? 'V' : Math.abs(hh) + (hh < 0 ? 'L' : 'R'), X(hh), padT + ph + 15);
+  ctx.fillText('H (°)', padL + pw / 2, padT + ph + 29);
+  ctx.textAlign = 'right';
+  for (let vv = -8; vv <= 6; vv += 2) ctx.fillText(vv === 0 ? 'H' : Math.abs(vv) + (vv < 0 ? 'D' : 'U'), padL - 6, Y(vv) + 4);
+  // colour bar
+  const bx = padL + pw + 14, bw = 12;
+  for (let k = 0; k < ph; k++) { const c = cmap(1 - k / ph); ctx.fillStyle = 'rgb(' + c.map(Math.round).join(',') + ')'; ctx.fillRect(bx, padT + k, bw, 1.5); }
+  ctx.fillStyle = tc; ctx.textAlign = 'left';
+  [100, 1000, 10000, 100000].forEach(v => { const l = Math.log10(v); if (l < lo || l > hi) return; const y = padT + (hi - l) / (hi - lo) * ph; ctx.fillRect(bx + bw, y, 4, 1); ctx.fillText(v >= 1000 ? (v / 1000) + 'k' : String(v), bx + bw + 6, y + 4); });
+  ctx.fillText('cd', bx, padT + ph + 15);
+  if (!on) return;
+  $('mapSub').textContent = aimed ? 'Aimed beam (cut-off ' + angV(r.cutoffAimed) + (r.type === 'asym' && r.options.aimMode === 'full' ? ', kink on V-V' : '') + '), screen angles, log scale.' : 'As in file, screen angles, log scale.';
+  const leg = ['<span><span class="sw" style="border-color:' + cutCol + '"></span>Cut-off line (G ≥ 0.08)</span>', '<span>Isolines 625 · 1 750 · 5 100 · 10 100 · 20 000 cd</span>'];
+  if (aimed && r.type === 'asym') leg.push('<span><span class="dot" style="background:#42be65"></span>Pass</span>', '<span><span class="dot" style="background:#ff5c66"></span>Fail</span>', '<span>Dashed polygon: Zone III</span>', '<span>◆ kink</span>');
+  $('mapLegend').innerHTML = leg.join('');
+  state.mapGeom = { X, Y, padL, padT, pw, ph, hx, vy };
+}
+const mapCv = $('map'), tip = $('tip');
+mapCv.addEventListener('mousemove', (e) => {
+  const g = state.mapGeom; if (!g || !state.mapF) return;
+  const rect = mapCv.getBoundingClientRect(), x = e.clientX - rect.left, y = e.clientY - rect.top;
+  if (x < g.padL || x > g.padL + g.pw || y < g.padT || y > g.padT + g.ph) { tip.style.display = 'none'; return; }
+  const hh = g.hx[0] + (x - g.padL) / g.pw * (g.hx[1] - g.hx[0]), vv = g.vy[1] - (y - g.padT) / g.ph * (g.vy[1] - g.vy[0]);
+  tip.textContent = angH(hh) + '  ' + angV(vv) + '  ' + fmt(state.mapF(hh, vv)) + ' cd';
+  tip.style.display = 'block';
+  tip.style.left = Math.min(x + 12, rect.width - tip.offsetWidth - 4) + 'px'; tip.style.top = (y + 12) + 'px';
+});
+mapCv.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+
+function lineChart(cv, cfg) {
+  const { ctx, w, h } = setup(cv, cfg.height || 260);
+  const padL = 52, padR = cfg.y2 ? 46 : 14, padT = 10, padB = 36;
+  const pw = w - padL - padR, ph = h - padT - padB;
+  const X = (x) => padL + (x - cfg.x.min) / (cfg.x.max - cfg.x.min) * pw;
+  const yT = (ax, y) => { const a = ax.log ? Math.log10(Math.max(y, ax.min)) : y, lo = ax.log ? Math.log10(ax.min) : ax.min, hi = ax.log ? Math.log10(ax.max) : ax.max; return padT + (hi - a) / (hi - lo) * ph; };
+  const tc = css('--text-2'), rc = css('--rule'), fc = css('--font-mono');
+  ctx.font = '11px ' + fc; ctx.fillStyle = tc; ctx.strokeStyle = rc; ctx.lineWidth = 1;
+  // grid + ticks
+  ctx.textAlign = 'center';
+  cfg.x.ticks.forEach(t => { const x = X(t); ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + ph); ctx.stroke(); ctx.globalAlpha = 1; ctx.fillText(cfg.x.fmt ? cfg.x.fmt(t) : t, x, padT + ph + 15); });
+  ctx.fillText(cfg.x.label, padL + pw / 2, padT + ph + 30);
+  ctx.textAlign = 'right';
+  cfg.y.ticks.forEach(t => { const y = yT(cfg.y, t); ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + pw, y); ctx.stroke(); ctx.globalAlpha = 1; ctx.fillText(cfg.y.fmt ? cfg.y.fmt(t) : t, padL - 6, y + 4); });
+  ctx.save(); ctx.translate(12, padT + ph / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText(cfg.y.label, 0, 0); ctx.restore();
+  if (cfg.y2) { ctx.textAlign = 'left'; cfg.y2.ticks.forEach(t => { ctx.fillText(cfg.y2.fmt ? cfg.y2.fmt(t) : t, padL + pw + 6, yT(cfg.y2, t) + 4); }); ctx.save(); ctx.translate(w - 8, padT + ph / 2); ctx.rotate(Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText(cfg.y2.label, 0, 0); ctx.restore(); }
+  ctx.strokeStyle = tc; ctx.strokeRect(padL, padT, pw, ph);
+  ctx.save(); ctx.beginPath(); ctx.rect(padL, padT, pw, ph); ctx.clip();
+  (cfg.bands || []).forEach(b => { ctx.fillStyle = b.color; const ax = b.axis === 'y2' ? cfg.y2 : cfg.y; const y1 = yT(ax, b.y1), y2 = yT(ax, b.y2); ctx.fillRect(padL, Math.min(y1, y2), pw, Math.abs(y2 - y1)); });
+  (cfg.vlines || []).forEach(l => { ctx.strokeStyle = l.color; ctx.lineWidth = l.width || 1; ctx.setLineDash(l.dash || []); ctx.beginPath(); ctx.moveTo(X(l.x), padT); ctx.lineTo(X(l.x), padT + ph); ctx.stroke(); });
+  (cfg.hlines || []).forEach(l => { const ax = l.axis === 'y2' ? cfg.y2 : cfg.y; ctx.strokeStyle = l.color; ctx.lineWidth = l.width || 1; ctx.setLineDash(l.dash || []); ctx.beginPath(); ctx.moveTo(padL, yT(ax, l.y)); ctx.lineTo(padL + pw, yT(ax, l.y)); ctx.stroke(); });
+  ctx.setLineDash([]);
+  cfg.series.forEach(s => {
+    const ax = s.axis === 'y2' ? cfg.y2 : cfg.y;
+    ctx.strokeStyle = s.color; ctx.lineWidth = s.width || 1.6; ctx.setLineDash(s.dash || []); ctx.beginPath(); let pen = false;
+    s.pts.forEach(([x, y]) => { if (y == null || !isFinite(y) || !isFinite(x)) { pen = false; return; } const px = X(x), py = yT(ax, y); pen ? ctx.lineTo(px, py) : ctx.moveTo(px, py); pen = true; });
+    ctx.stroke(); ctx.setLineDash([]);
+  });
+  (cfg.marks || []).forEach(mk => { const ax = mk.axis === 'y2' ? cfg.y2 : cfg.y; ctx.fillStyle = mk.color; ctx.beginPath(); ctx.arc(X(mk.x), yT(ax, mk.y), 4, 0, 2 * Math.PI); ctx.fill(); ctx.strokeStyle = css('--layer'); ctx.lineWidth = 1.5; ctx.stroke(); if (mk.label) { ctx.fillStyle = css('--text'); ctx.font = '11px ' + fc; ctx.textAlign = 'left'; ctx.fillText(mk.label, X(mk.x) + 7, yT(ax, mk.y) - 6); } });
+  ctx.restore();
+}
+const SER = ['--accent', '--cut', '--ok'];
+
+function drawVScan(tgt) {
+  const r = state.res, cv = tgt || $('vscan');
+  if (!r || r.type === 'none') { setup(cv, 60); if (!tgt) $('vsLegend').innerHTML = ''; return; }
+  const m = r.mirror || 1, sd = m === -1 ? 'R' : 'L';
+  const scans = [['1.5°' + sd, r.scan15], ['2.5°' + sd, r.scan25], ['3.5°' + sd, r.scan35]];
+  const vc = r.scan25.v;
+  const x0 = Math.floor((vc - 2) * 2) / 2, x1 = Math.ceil((vc + 1.5) * 2) / 2;
+  let imax = 1; scans.forEach(([, s]) => s.vs.forEach((v, k) => { if (v >= x0 && v <= x1) imax = Math.max(imax, s.Is[k]); }));
+  const ymax = Math.pow(10, Math.ceil(Math.log10(imax)));
+  const ticksX = []; for (let t = Math.ceil(x0 * 2) / 2; t <= x1 + 1e-9; t += 0.5) ticksX.push(+t.toFixed(2));
+  const cols = SER.map(css);
+  const series = [], marks = [];
+  scans.forEach(([lab, s], i) => {
+    const pts = [], gpts = [];
+    for (let k = 0; k < s.vs.length; k += 2) { const v = s.vs[k]; if (v < x0 || v > x1) continue; pts.push([v, s.Is[k]]); gpts.push([v, s.Gs[k]]); }
+    series.push({ pts, color: cols[i], width: i === 1 ? 2 : 1.2 });
+    series.push({ pts: gpts, color: cols[i], width: i === 1 ? 1.6 : 1, dash: [4, 3], axis: 'y2' });
+    if (i === 1) marks.push({ x: s.v, y: s.G, axis: 'y2', color: cols[i], label: 'G ' + s.G.toFixed(3) });
+  });
+  const gmax = Math.max(0.5, Math.ceil(Math.max(r.scan15.G, r.scan25.G, r.scan35.G) * 10 + 1) / 10);
+  lineChart(cv, {
+    height: 270,
+    x: { min: x0, max: x1, ticks: ticksX, label: 'V in file (°, + up)', fmt: t => t.toFixed(1) },
+    y: { min: Math.max(1, ymax / 1e4), max: ymax, log: true, ticks: [1, 10, 100, 1000, 10000, 100000].filter(t => t >= ymax / 1e4 && t <= ymax), label: 'I (cd, log)', fmt: t => t >= 1000 ? (t / 1000) + 'k' : t },
+    y2: { min: 0, max: gmax, ticks: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0].filter(t => t <= gmax), label: 'G', fmt: t => t.toFixed(1) },
+    hlines: [{ y: 0.13, axis: 'y2', color: css('--ok'), dash: [2, 3] }, { y: 0.40, axis: 'y2', color: css('--bad'), dash: [2, 3] }],
+    vlines: [{ x: vc, color: css('--text-2'), dash: [1, 3] }],
+    series, marks
+  });
+  if (tgt) return;
+  $('vsSub').textContent = 'log I (solid) and gradient G (dashed) at 1.5°, 2.5°, 3.5°' + sd + ', V in file angles.';
+  $('vsLegend').innerHTML = scans.map(([lab], i) => '<span><span class="sw" style="border-color:' + cols[i] + '"></span>' + lab + '</span>').join('') + '<span>G limits 0.13 (min) and 0.40 (max)</span>';
+}
+
+function drawCLine(tgt) {
+  const r = state.res, cv = tgt || $('cline');
+  if (!r || r.type === 'none') { setup(cv, 60); if (!tgt) $('clLegend').innerHTML = ''; return; }
+  const m = r.mirror || 1;
+  const pts = r.rawLine.map(p => [p.h, p.G >= 0.08 ? p.v : null]);
+  const gp = r.rawLine.map(p => [p.h, p.G]);
+  const vs = r.rawLine.filter(p => p.G >= 0.08).map(p => p.v);
+  const vmin = Math.floor((Math.min(...vs) - 0.4) * 4) / 4, vmax = Math.ceil((Math.max(...vs) + 0.4) * 4) / 4;
+  const ticksY = []; const st = (vmax - vmin) > 2 ? 0.5 : 0.25; for (let t = Math.ceil(vmin / st) * st; t <= vmax + 1e-9; t += st) ticksY.push(+t.toFixed(2));
+  const vl = [{ x: 0, color: css('--text-2'), dash: [1, 3] }];
+  const marks = [];
+  if (r.type === 'asym') {
+    vl.push({ x: r.aim.kinkRaw, color: css('--cut'), width: 1.5 });
+    if (isFinite(r.kinkA.h)) vl.push({ x: m * r.kinkA.h, color: css('--accent'), dash: [5, 3] });
+    if (r.kinkB.valid) vl.push({ x: m * r.kinkB.h, color: css('--ok'), dash: [5, 3] });
+    marks.push({ x: m * r.kinkGeom.h, y: r.vLcanon, color: css('--cut'), label: 'kink ' + angH(m * r.kinkGeom.h) });
+  }
+  lineChart(cv, {
+    height: 270,
+    x: { min: -10, max: 10, ticks: [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10], label: 'H in file (°)', fmt: t => t === 0 ? 'V' : Math.abs(t) + (t < 0 ? 'L' : 'R') },
+    y: { min: vmin, max: vmax, ticks: ticksY, label: 'Cut-off V (°)', fmt: t => t.toFixed(2) },
+    y2: { min: 0, max: 1, ticks: [0, 0.2, 0.4, 0.6, 0.8, 1], label: 'G', fmt: t => t.toFixed(1) },
+    bands: [{ y1: 0, y2: 0.08, axis: 'y2', color: 'rgba(128,128,128,0.10)' }],
+    vlines: vl,
+    series: [{ pts: gp, color: css('--text-2'), width: 1, dash: [3, 3], axis: 'y2' }, { pts, color: css('--cut'), width: 2.2 }],
+    marks
+  });
+  if (tgt) return;
+  let leg = '<span><span class="sw" style="border-color:' + css('--cut') + '"></span>Cut-off position</span><span><span class="sw" style="border-color:' + css('--text-2') + ';border-top-style:dashed"></span>G (right axis; shaded &lt; 0.08)</span>';
+  if (r.type === 'asym') leg += '<span><span class="sw" style="border-color:' + css('--accent') + ';border-top-style:dashed"></span>0.2D method</span>' + (r.kinkB.valid ? '<span><span class="sw" style="border-color:' + css('--ok') + ';border-top-style:dashed"></span>Three-line method</span>' : '') + '<span>Solid magenta: kink used for aim</span>';
+  $('clLegend').innerHTML = leg;
+}
+
+/* ---------- export ---------- */
+function csvReport() {
+  const r = state.res; if (!r) return '';
+  const o = r.options, lr = r._lr || (s => s), m = r.mirror || 1;
+  const L = [];
+  const q = (s) => '"' + String(s).replace(/"/g, '""') + '"';
+  L.push(['beamCutoff report'].map(q).join(','));
+  L.push(['File', state.name].map(q).join(','));
+  L.push(['Beam type', r.typeLabel || 'no cut-off'].map(q).join(','));
+  if (r.type !== 'none') {
+    L.push(['Horizontal cut-off in file (deg, +up)', r.aim.cutoffRaw.toFixed(3)].map(q).join(','));
+    L.push(['G grid / 10m / 25m', [r.G_grid, r.G_10m, r.G_25m].map(x => x.toFixed(3)).join(' / ')].map(q).join(','));
+  }
+  if (r.type === 'asym') {
+    L.push(['Kink direction', r.kinkDir].map(q).join(','));
+    L.push(['Kink in file (deg, +right) geometric / 0.2D / 3-line', [m * r.kinkGeom.h, m * r.kinkA.h, r.kinkB.valid ? m * r.kinkB.h : NaN].map(x => isFinite(x) ? x.toFixed(3) : 'n/a').join(' / ')].map(q).join(','));
+    L.push(['Kink slope (deg)', r.kinkSlope.toFixed(1)].map(q).join(','));
+    L.push(['Class', o.cls].map(q).join(','));
+    L.push(['Aim dv / dh (deg)', r.aim.dv.toFixed(3) + ' / ' + (m * r.aim.dh).toFixed(3)].map(q).join(','));
+    L.push('');
+    L.push(['Item', 'Value', 'Requirement', 'Result', 'Reference'].map(q).join(','));
+    r.cutoffChecks.forEach(c => L.push([c.id, typeof c.value === 'number' ? c.value.toFixed(3) : c.value, c.limit, c.pass ? 'PASS' : 'FAIL', c.ref].map(q).join(',')));
+    L.push('');
+    L.push(['Element', 'Position', 'Value (cd)', 'Min (cd)', 'Max (cd)', 'Margin %', 'Result', 'Note'].map(q).join(','));
+    r.check.forEach(c => L.push([lr(c.id), lr(c.loc), Math.round(c.value), c.min ?? '', c.max ?? '', isFinite(c.margin) ? (c.margin * 100).toFixed(1) : '', c.pass ? 'PASS' : 'FAIL', c.note].map(q).join(',')));
+  }
+  if (r.flux) { L.push(''); L.push(['Total flux (lm)', r.flux.total.toFixed(1)].map(q).join(',')); L.push(['Flux above H-H aimed (lm)', r.flux.aboveHH.toFixed(2)].map(q).join(',')); }
+  return L.join('\n');
+}
+function jsonReport() {
+  const r = state.res; if (!r) return '';
+  const pick = { file: state.name, options: r.options, type: r.type, traffic: r.traffic, typeLabel: r.typeLabel, cutoffInFile: r.aim && r.aim.cutoffRaw, kinkInFile: r.aim && r.aim.kinkRaw, kinkDir: r.kinkDir, kinkSlope: r.kinkSlope, kinkShape: r.kinkShape, G: { grid: r.G_grid, d10m: r.G_10m, d25m: r.G_25m }, linearity: r.linearity, aim: r.aim, cutoffChecks: r.cutoffChecks, check: r.check && r.check.map(c => ({ id: r._lr(c.id), loc: r._lr(c.loc), value: c.value, min: c.min, max: c.max, margin: c.margin, pass: c.pass })), flux: r.flux, ranges: r.ranges, warnings: r.warnings };
+  return JSON.stringify(pick, (k, v) => typeof v === 'number' ? +v.toFixed(4) : v, 2);
+}
+/* ---------- report export (HTML / PDF / CSV / JSON) ---------- */
+const PRINT_DATE = () => { const d = new Date(), p = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()); };
+const baseName = () => (state.name || 'beam').replace(/^Built-in example.*$/, 'example').replace(/\.[^.]+$/, '').replace(/[^\w.-]+/g, '_').slice(0, 60);
+
+function tableData(tbl) {
+  if (!tbl || !tbl.rows.length) return null;
+  const head = [...tbl.querySelectorAll('thead th')].map(th => th.innerText.replace(/\s+/g, ' ').trim());
+  const rows = [...tbl.querySelectorAll('tbody tr')].map(tr => ({
+    fail: tr.classList.contains('fail'),
+    cells: [...tr.children].map(td => {
+      const pill = td.querySelector('.pill');
+      return {
+        text: pill ? pill.textContent.trim() : td.innerText.replace(/[ \t]+/g, ' ').replace(/\n+/g, '\n').trim(),
+        pill: pill ? pill.textContent.trim() : null,
+        ok: td.classList.contains('ok'), bad: td.classList.contains('bad'), nom: td.classList.contains('nom'),
+        num: td.classList.contains('num'), th: td.tagName === 'TH'
+      };
+    })
+  }));
+  return { head, rows };
+}
+const kvData = (el) => [...el.children].filter(d => d.children.length >= 2).map(d => [d.children[0].innerText.trim(), d.children[1].innerText.trim()]);
+
+function buildModel() {
+  const r = state.res, o = r.options;
+  const tiles = [...$('tiles').children].map(t => ({
+    k: t.querySelector('.k').innerText.trim(), v: t.querySelector('.v').innerText.trim(), s: t.querySelector('.s').innerText.trim(),
+    st: t.classList.contains('verdict-ok') ? 'ok' : t.classList.contains('verdict-bad') ? 'bad' : null
+  }));
+  const settings = [
+    ['Regulation', 'UN R149, 00 series, passing beam Class C'],
+    ['Traffic side', ({ auto: 'detected from cut-off shape', RHT: 'right-hand traffic (set)', LHT: 'left-hand traffic (set)' })[o.traffic]],
+    ['Aim', $('optAim').selectedOptions[0].textContent],
+    ['Kink for horizontal aim', $('optHMethod').selectedOptions[0].textContent],
+    ['Cut-off target', fmt(Math.abs(o.target), 2) + '°D'],
+    ['Extra shift (V / H)', fmt(o.dvExtra, 2) + '° / ' + fmt(o.dhExtra, 2) + '°'],
+    ['Detector aperture (cut-off line)', $('optDet').selectedOptions[0].textContent],
+    ['Mounting height', fmt(o.mountH, 2) + ' m']
+  ];
+  const warnings = [...$('banners').querySelectorAll('li')].map(li => li.innerText.trim());
+  const verdictBanner = r.verdict && r.type !== 'asym' ? r.verdict : null;
+  const asym = r.type === 'asym';
+  return {
+    file: state.name, date: PRINT_DATE(), example: state.isExample, type: r.type, tiles, settings, warnings, verdictBanner,
+    cut: r.type !== 'none' ? tableData($('tblCut')) : null,
+    kink: r.type !== 'none' ? kvData($('kinkKv')) : [],
+    regTitle: asym ? $('regTitle').innerText : null, regSub: asym ? $('regSub').innerText : null,
+    reg: asym ? tableData($('tblReg')) : null,
+    robust: asym ? tableData($('tblRob')) : null,
+    extra: kvData($('extraKv')), ranges: tableData($('tblRange')),
+    fileKv: kvData($('fileKv')),
+    notes: [...$('methodNotes').querySelectorAll('li')].map(li => li.innerText.trim())
+  };
+}
+
+function captureCharts() {
+  const root = document.documentElement, prev = root.getAttribute('data-theme'), prevView = state.view;
+  root.setAttribute('data-theme', 'light');
+  state.view = 'aimed';
+  const mk = (w) => { const c = document.createElement('canvas'); c.__w = w; c.__dpr = 2; return c; };
+  const out = {};
+  try {
+    if (state.res.type !== 'none') {
+      out.map = mk(1000); drawMap(out.map);
+      out.vscan = mk(640); drawVScan(out.vscan);
+      out.cline = mk(640); drawCLine(out.cline);
+    }
+  } finally {
+    state.view = prevView;
+    if (prev == null) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', prev);
+  }
+  return out;
+}
+const MAP_CAPTION = 'Aimed beam, screen angles in degrees, log scale. Magenta: cut-off line (G ≥ 0.08), ◆ kink. Dots and lines: R149 test points and segments (green pass, red fail). Dashed polygon: Zone III. Isolines 625, 1 750, 5 100, 10 100, 20 000 cd.';
+
+/* ----- HTML report ----- */
+function htmlReport(M, imgs) {
+  const e = esc;
+  const tbl = (T, opt) => {
+    if (!T) return '';
+    opt = opt || {};
+    return '<table' + (opt.cls ? ' class="' + opt.cls + '"' : '') + '><thead><tr>' + T.head.map((h, i) => '<th' + (T.rows[0] && T.rows[0].cells[i] && T.rows[0].cells[i].num ? ' class="num"' : '') + '>' + e(h) + '</th>').join('') + '</tr></thead><tbody>' +
+      T.rows.map(rw => '<tr' + (rw.fail ? ' class="fail"' : '') + '>' + rw.cells.map(c => {
+        const cls = [c.num ? 'num' : '', c.ok ? 'ok' : '', c.bad ? 'bad' : '', c.nom ? 'nom' : ''].filter(Boolean).join(' ');
+        const inner = c.pill ? '<span class="pill ' + (c.pill === 'PASS' ? 'ok' : c.pill === 'FAIL' ? 'bad' : 'na') + '">' + e(c.pill) + '</span>' : e(c.text).replace(/\n/g, '<br>');
+        return '<' + (c.th ? 'th' : 'td') + (cls ? ' class="' + cls + '"' : '') + '>' + inner + '</' + (c.th ? 'th' : 'td') + '>';
+      }).join('') + '</tr>').join('') + '</tbody></table>';
+  };
+  const kv = (P) => '<dl class="kv">' + P.map(([a, b]) => '<div><dt>' + e(a) + '</dt><dd>' + e(b) + '</dd></div>').join('') + '</dl>';
+  const img = (c, alt) => c ? '<img src="' + c.toDataURL('image/png') + '" alt="' + e(alt) + '">' : '';
+  return '<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<title>Cut-off report: ' + e(M.file) + '</title><style>' +
+    ':root{--text:#161616;--t2:#525a66;--rule:#d5d9e0;--accent:#0f62fe;--ok:#198038;--bad:#da1e28;--okbg:#defbe6;--badbg:#fff1f1;--cut:#d02670;color-scheme:light}' +
+    '*{box-sizing:border-box}body{margin:0;background:#fff;color:var(--text);font:13px/1.45 "IBM Plex Sans","Segoe UI",Roboto,Helvetica,Arial,sans-serif}' +
+    '.page{max-width:1000px;margin:0 auto;padding:32px 28px 48px}h1{font-size:24px;margin:0 0 4px;font-weight:600}h2{font-size:16px;margin:28px 0 10px;padding-bottom:6px;border-bottom:2px solid var(--text);font-weight:600}' +
+    '.meta{color:var(--t2);font-size:12.5px}.mono,td.num,th.num{font-family:"IBM Plex Mono",Consolas,monospace;font-variant-numeric:tabular-nums}' +
+    '.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);margin-top:16px}.tile{background:#fff;padding:10px 12px}.tile.ok{box-shadow:inset 4px 0 0 var(--ok)}.tile.bad{box-shadow:inset 4px 0 0 var(--bad)}' +
+    '.tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--t2)}.tile .v{font-size:17px;font-weight:600}.tile .s{font-size:11.5px;color:var(--t2)}' +
+    'img{max-width:100%;display:block;border:1px solid var(--rule)}.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}.cap{font-size:11.5px;color:var(--t2);margin:6px 0 0}' +
+    'table{border-collapse:collapse;width:100%;font-size:12px;margin:6px 0}th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--t2);padding:6px 8px;border-bottom:1px solid var(--t2)}' +
+    'td{padding:5px 8px;border-bottom:1px solid var(--rule);vertical-align:top}td.num,th.num{text-align:right;white-space:nowrap}tr.fail td:first-child{box-shadow:inset 3px 0 0 var(--bad)}' +
+    '.pill{display:inline-block;padding:0 7px;font-size:10.5px;font-weight:600}.pill.ok{background:var(--okbg);color:var(--ok)}.pill.bad{background:var(--badbg);color:var(--bad)}.pill.na{background:#eef0f3;color:var(--t2)}' +
+    '.robust td,.robust th{text-align:center}.robust td.ok{background:var(--okbg);color:var(--ok)}.robust td.bad{background:var(--badbg);color:var(--bad)}.robust td.nom{outline:2px solid var(--accent);outline-offset:-2px}' +
+    '.kv{display:grid;grid-template-columns:1fr 1fr;gap:0 24px;margin:6px 0}.kv div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--rule);padding:4px 0}.kv dt{color:var(--t2)}.kv dd{margin:0;text-align:right;font-family:"IBM Plex Mono",Consolas,monospace}' +
+    '.note{border-left:3px solid #b28600;background:#fcf4d6;padding:8px 12px;font-size:12.5px;margin-top:12px}.note.bad{border-color:var(--bad);background:var(--badbg)}ul.notes{font-size:11.5px;color:var(--t2);padding-left:18px}' +
+    'footer{margin-top:32px;font-size:11px;color:var(--t2);border-top:1px solid var(--rule);padding-top:8px}' +
+    '@media(max-width:700px){.tiles,.two,.kv{grid-template-columns:1fr}}' +
+    '@page{size:A4;margin:14mm}@media print{.page{padding:0;max-width:none}h2{break-after:avoid}table,img,.tiles{break-inside:avoid}tr{break-inside:avoid}}' +
+    '</style></head><body><div class="page">' +
+    '<h1>Cut-off analysis report</h1><div class="meta">File <span class="mono">' + e(M.file) + '</span> · generated ' + e(M.date) + ' with beamCutoff</div>' +
+    (M.verdictBanner ? '<div class="note' + (M.type === 'none' ? ' bad' : '') + '">' + e(M.verdictBanner) + '</div>' : '') +
+    (M.warnings.length ? '<div class="note"><strong>Notes on this file</strong><ul>' + M.warnings.map(w => '<li>' + e(w) + '</li>').join('') + '</ul></div>' : '') +
+    '<div class="tiles">' + M.tiles.map(t => '<div class="tile' + (t.st ? ' ' + t.st : '') + '"><div class="k">' + e(t.k) + '</div><div class="v">' + e(t.v) + '</div><div class="s">' + e(t.s) + '</div></div>').join('') + '</div>' +
+    '<h2>Settings</h2>' + kv(M.settings) +
+    (imgs.map ? '<h2>Candela map</h2>' + img(imgs.map, 'Candela map') + '<p class="cap">' + e(MAP_CAPTION) + '</p>' +
+      '<div class="two"><div><h2>Vertical scans</h2>' + img(imgs.vscan, 'Vertical scans') + '<p class="cap">log I (solid) and G (dashed) at 1.5°, 2.5°, 3.5° on the horizontal part, file angles.</p></div><div><h2>Cut-off line</h2>' + img(imgs.cline, 'Cut-off line') + '<p class="cap">Inflection position per vertical scan, file angles; dashed grey: G.</p></div></div>' : '') +
+    (M.cut ? '<h2>Cut-off quality and aiming (Annex 6)</h2>' + tbl(M.cut) + kv(M.kink) : '') +
+    (M.reg ? '<h2>' + e(M.regTitle) + '</h2><p class="meta">' + e(M.regSub) + '</p>' + tbl(M.reg) : '') +
+    (M.robust ? '<h2>Aim robustness</h2><p class="meta">Failing photometric items when the aimed beam is moved away from nominal. Outlined cell: nominal aim.</p>' + tbl(M.robust, { cls: 'robust' }) : '') +
+    '<h2>Additional beam data</h2>' + kv(M.extra) + tbl(M.ranges) +
+    '<h2>File</h2>' + kv(M.fileKv) +
+    '<h2>Method</h2><ul class="notes">' + M.notes.map(n => '<li>' + e(n) + '</li>').join('') + '</ul>' +
+    '<footer>beamCutoff · UN R149 (00 series) Class C · values computed from the IES file in the browser; verify limits against your controlled copy of the regulation.</footer>' +
+    '</div></body></html>';
+}
+
+/* ----- minimal PDF writer (Helvetica, WinAnsi, JPEG images) ----- */
+const PDF = (function () {
+  const HELV = [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015,
+    667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611,
+    278, 278, 278, 469, 556, 333,
+    556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500,
+    334, 260, 334, 584];
+  const HELVB = [278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, 975,
+    722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611,
+    333, 278, 333, 584, 556, 333,
+    556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500,
+    389, 280, 389, 584];
+  const EXT = { 0xB0: 400, 0xB7: 278, 0xD7: 584, 0xD8: 778, 0x85: 1000, 0x96: 556, 0x97: 1000, 0xB1: 584, 0xB5: 556, 0x91: 222, 0x92: 222, 0x93: 333, 0x94: 333, 0xB2: 333, 0xB3: 333, 0xE9: 556, 0xFC: 556, 0xF6: 556, 0xE4: 556, 0xA7: 556 };
+  const MAP = { '§': 0xA7, '°': 0xB0, '·': 0xB7, '×': 0xD7, 'Ø': 0xD8, '…': 0x85, '–': 0x96, '—': 0x97, '±': 0xB1, 'µ': 0xB5, '‘': 0x91, '’': 0x92, '“': 0x93, '”': 0x94, '²': 0xB2, '³': 0xB3, 'é': 0xE9, 'ü': 0xFC, 'ö': 0xF6, 'ä': 0xE4 };
+  const REPL = { '≥': '>=', '≤': '<=', '◆': '*', '≈': '~', '→': '->', 'γ': 'gamma', 'Δ': 'delta', ' ': ' ', ' ': ' ', ' ': ' ', '−': '-', '∩': 'n' };
+  function enc(s) {
+    let o = '';
+    for (const ch of String(s)) {
+      const c = ch.codePointAt(0);
+      if (c >= 32 && c < 127) o += ch;
+      else if (MAP[ch]) o += String.fromCharCode(MAP[ch]);
+      else if (REPL[ch] != null) o += REPL[ch];
+      else if (c === 10) o += '\n';
+      else o += '?';
+    }
+    return o;
+  }
+  const cw = (c, b) => (c >= 32 && c < 127) ? (b ? HELVB : HELV)[c - 32] : (EXT[c] || 556);
+  const esc = (s) => s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  const n2 = (x) => (Math.round(x * 100) / 100).toString();
+  const rgb = (h) => { const c = hex(h); return c.map(v => n2(v / 255)).join(' '); };
+
+  function jpegOf(canvas) { // flatten transparency onto white, then JPEG
+    const t = document.createElement('canvas'); t.width = canvas.width; t.height = canvas.height;
+    const x = t.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0, 0, t.width, t.height); x.drawImage(canvas, 0, 0);
+    return atob(t.toDataURL('image/jpeg', 0.92).split(',')[1]);
+  }
+  class Doc {
+    constructor(title) {
+      this.W = 595.28; this.H = 841.89; this.M = 40; this.CW = this.W - 2 * this.M; this.title = title;
+      this.pages = []; this.images = []; this.newPage();
+    }
+    newPage() { this.cur = []; this.pages.push(this.cur); this.y = this.M; }
+    bottom() { return this.H - this.M - 16; }
+    ensure(h) { if (this.y + h > this.bottom()) { this.newPage(); return true; } return false; }
+    width(s, size, bold) { const t = enc(s); let w = 0; for (let i = 0; i < t.length; i++) w += cw(t.charCodeAt(i), bold); return w * size / 1000; }
+    wrap(s, size, bold, maxW) {
+      const out = [];
+      String(s).split('\n').forEach(par => {
+        const words = par.split(/ +/); let line = '';
+        words.forEach(wd => {
+          const t = line ? line + ' ' + wd : wd;
+          if (this.width(t, size, bold) <= maxW) { line = t; return; }
+          if (line) out.push(line);
+          if (this.width(wd, size, bold) <= maxW) { line = wd; return; }
+          let part = ''; for (const ch of wd) { if (this.width(part + ch, size, bold) > maxW) { out.push(part); part = ch; } else part += ch; } line = part;
+        });
+        out.push(line);
+      });
+      return out;
+    }
+    text(x, yBase, s, size, bold, color) { this.cur.push('BT /' + (bold ? 'F2' : 'F1') + ' ' + n2(size) + ' Tf ' + rgb(color || '#161616') + ' rg ' + n2(x) + ' ' + n2(this.H - yBase) + ' Td (' + esc(enc(s)) + ') Tj ET'); }
+    rect(x, y, w, h, color) { this.cur.push(rgb(color) + ' rg ' + n2(x) + ' ' + n2(this.H - y - h) + ' ' + n2(w) + ' ' + n2(h) + ' re f'); }
+    line(x1, y1, x2, y2, color, lw) { this.cur.push(rgb(color) + ' RG ' + n2(lw || 0.5) + ' w ' + n2(x1) + ' ' + n2(this.H - y1) + ' m ' + n2(x2) + ' ' + n2(this.H - y2) + ' l S'); }
+    para(s, o) {
+      o = o || {}; const size = o.size || 9, lh = size * 1.35, x = this.M + (o.indent || 0), w = this.CW - (o.indent || 0);
+      this.wrap(s, size, o.bold, w).forEach((ln, i) => { this.ensure(lh); this.text(x, this.y + size, (i === 0 && o.bullet ? '' : '') + ln, size, o.bold, o.color); this.y += lh; });
+      this.y += o.after == null ? 3 : o.after;
+    }
+    bullet(s, size) {
+      size = size || 8.2; const lh = size * 1.35, ind = 10;
+      const lines = this.wrap(s, size, false, this.CW - ind);
+      lines.forEach((ln, i) => { this.ensure(lh); if (i === 0) this.text(this.M + 2, this.y + size, '·', size, true, '#525a66'); this.text(this.M + ind, this.y + size, ln, size, false, '#525a66'); this.y += lh; });
+      this.y += 2;
+    }
+    heading(s) {
+      this.ensure(60); this.y += 10;
+      this.text(this.M, this.y + 12, s, 12, true); this.y += 17;
+      this.line(this.M, this.y, this.M + this.CW, this.y, '#161616', 1.2); this.y += 7;
+    }
+    kv(pairs) {
+      const colW = (this.CW - 18) / 2, size = 8.4, lh = size * 1.3;
+      for (let i = 0; i < pairs.length; i += 2) {
+        const cells = [pairs[i], pairs[i + 1]].filter(Boolean).map(([a, b]) => ({ a: this.wrap(a, size, false, colW * 0.55 - 4), b: this.wrap(b, size, false, colW * 0.45) }));
+        const h = Math.max(...cells.map(c => Math.max(c.a.length, c.b.length))) * lh + 6;
+        this.ensure(h);
+        cells.forEach((c, k) => {
+          const x = this.M + k * (colW + 18);
+          c.a.forEach((ln, j) => this.text(x, this.y + 3 + size + j * lh, ln, size, false, '#525a66'));
+          c.b.forEach((ln, j) => this.text(x + colW - this.width(ln, size, false), this.y + 3 + size + j * lh, ln, size, false, '#161616'));
+          this.line(x, this.y + h, x + colW, this.y + h, '#d5d9e0', 0.5);
+        });
+        this.y += h;
+      }
+      this.y += 6;
+    }
+    table(T, fr, o) {
+      if (!T) return;
+      o = o || {}; const size = o.size || 8, lh = size * 1.3, pad = 3.5;
+      const ws = fr.map(f => f * this.CW);
+      const xs = ws.map((w, i) => this.M + ws.slice(0, i).reduce((a, b) => a + b, 0));
+      const numCol = T.head.map((h, i) => o.center ? 'c' : (T.rows[0] && T.rows[0].cells[i] && T.rows[0].cells[i].num ? 'r' : 'l'));
+      const drawHead = () => {
+        const hl = T.head.map((h, i) => this.wrap(h.toUpperCase(), 6.8, true, ws[i] - 2 * pad));
+        const hh = Math.max(...hl.map(l => l.length)) * 8.5 + 2 * pad;
+        hl.forEach((lines, i) => lines.forEach((ln, j) => {
+          const w = this.width(ln, 6.8, true), x = numCol[i] === 'r' ? xs[i] + ws[i] - pad - w : numCol[i] === 'c' ? xs[i] + (ws[i] - w) / 2 : xs[i] + pad;
+          this.text(x, this.y + pad + 6.8 + j * 8.5, ln, 6.8, true, '#525a66');
+        }));
+        this.y += hh; this.line(this.M, this.y, this.M + this.CW, this.y, '#525a66', 0.8);
+      };
+      this.ensure(40); drawHead();
+      T.rows.forEach(rw => {
+        const cells = rw.cells.map((c, i) => {
+          const bold = !!c.pill || c.th;
+          return { c, bold, lines: this.wrap(c.text, size, bold, ws[i] - 2 * pad) };
+        });
+        const h = Math.max(...cells.map(x => x.lines.length)) * lh + 2 * pad;
+        if (this.ensure(h)) drawHead();
+        if (rw.fail) this.rect(this.M, this.y, 2.2, h, '#da1e28');
+        cells.forEach(({ c, bold, lines }, i) => {
+          let col = '#161616';
+          if (c.ok || c.pill === 'PASS') col = '#198038';
+          if (c.bad || c.pill === 'FAIL') col = '#da1e28';
+          if (c.pill === 'INFO') col = '#525a66';
+          if (c.ok) this.rect(xs[i] + 0.5, this.y + 0.5, ws[i] - 1, h - 1, '#defbe6');
+          if (c.bad) this.rect(xs[i] + 0.5, this.y + 0.5, ws[i] - 1, h - 1, '#fff1f1');
+          if (c.nom) { this.cur.push(rgb('#0f62fe') + ' RG 1.4 w ' + n2(xs[i] + 1) + ' ' + n2(this.H - this.y - h + 1) + ' ' + n2(ws[i] - 2) + ' ' + n2(h - 2) + ' re S'); }
+          lines.forEach((ln, j) => {
+            const w = this.width(ln, size, bold), al = c.th && o.center ? 'c' : numCol[i];
+            const x = al === 'r' ? xs[i] + ws[i] - pad - w : al === 'c' ? xs[i] + (ws[i] - w) / 2 : xs[i] + pad;
+            this.text(x, this.y + pad + size + j * lh, ln, size, bold || (j === 0 && i === 0 && o.boldFirst), j > 0 && i === 0 && o.boldFirst ? '#525a66' : col);
+          });
+        });
+        this.y += h; this.line(this.M, this.y, this.M + this.CW, this.y, '#d5d9e0', 0.4);
+      });
+      this.y += 8;
+    }
+    image(canvas, maxW) {
+      const data = jpegOf(canvas);
+      const id = this.images.length; this.images.push({ data, w: canvas.width, h: canvas.height });
+      const w = Math.min(maxW || this.CW, this.CW), h = w * canvas.height / canvas.width;
+      this.ensure(h + 4);
+      this.cur.push('q ' + n2(w) + ' 0 0 ' + n2(h) + ' ' + n2(this.M) + ' ' + n2(this.H - this.y - h) + ' cm /Im' + id + ' Do Q');
+      this.y += h + 4;
+    }
+    imagesSideBySide(c1, c2) {
+      const gap = 12, w = (this.CW - gap) / 2, h = Math.max(w * c1.height / c1.width, w * c2.height / c2.width);
+      this.ensure(h + 4);
+      [c1, c2].forEach((c, k) => {
+        const data = jpegOf(c);
+        const id = this.images.length; this.images.push({ data, w: c.width, h: c.height });
+        const hh = w * c.height / c.width;
+        this.cur.push('q ' + n2(w) + ' 0 0 ' + n2(hh) + ' ' + n2(this.M + k * (w + gap)) + ' ' + n2(this.H - this.y - hh) + ' cm /Im' + id + ' Do Q');
+      });
+      this.y += h + 4;
+    }
+    build(footerLeft) {
+      const N = this.pages.length;
+      this.pages.forEach((p, i) => {
+        this.cur = p;
+        this.line(this.M, this.H - this.M + 2, this.M + this.CW, this.H - this.M + 2, '#d5d9e0', 0.5);
+        this.text(this.M, this.H - this.M + 12, footerLeft, 7, false, '#525a66');
+        const t = 'Page ' + (i + 1) + ' of ' + N; this.text(this.M + this.CW - this.width(t, 7, false), this.H - this.M + 12, t, 7, false, '#525a66');
+      });
+      const objs = []; // strings (latin1)
+      const add = (s) => { objs.push(s); return objs.length; };
+      const catalog = add(null), pagesId = add(null);
+      const f1 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+      const f2 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+      const imIds = this.images.map(im => add('<< /Type /XObject /Subtype /Image /Width ' + im.w + ' /Height ' + im.h + ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + im.data.length + ' >>\nstream\n' + im.data + '\nendstream'));
+      const xo = this.images.length ? ' /XObject << ' + imIds.map((id, k) => '/Im' + k + ' ' + id + ' 0 R').join(' ') + ' >>' : '';
+      const kids = [];
+      this.pages.forEach(p => {
+        const content = p.join('\n');
+        const cid = add('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream');
+        kids.push(add('<< /Type /Page /Parent ' + pagesId + ' 0 R /MediaBox [0 0 ' + n2(this.W) + ' ' + n2(this.H) + '] /Resources << /Font << /F1 ' + f1 + ' 0 R /F2 ' + f2 + ' 0 R >>' + xo + ' >> /Contents ' + cid + ' 0 R >>'));
+      });
+      objs[catalog - 1] = '<< /Type /Catalog /Pages ' + pagesId + ' 0 R >>';
+      objs[pagesId - 1] = '<< /Type /Pages /Kids [' + kids.map(k => k + ' 0 R').join(' ') + '] /Count ' + kids.length + ' >>';
+      const info = add('<< /Title (' + esc(enc(this.title)) + ') /Producer (beamCutoff) /Creator (beamCutoff) >>');
+      let out = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+      const offs = [];
+      objs.forEach((s, i) => { offs.push(out.length); out += (i + 1) + ' 0 obj\n' + s + '\nendobj\n'; });
+      const xref = out.length;
+      out += 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n' + offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('');
+      out += 'trailer\n<< /Size ' + (objs.length + 1) + ' /Root ' + catalog + ' 0 R /Info ' + info + ' 0 R >>\nstartxref\n' + xref + '\n%%EOF\n';
+      const bytes = new Uint8Array(out.length);
+      for (let i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 0xff;
+      return bytes;
+    }
+  }
+  return { Doc, enc };
+})();
+
+function pdfReport(M, imgs) {
+  const d = new PDF.Doc('Cut-off report: ' + M.file);
+  d.text(d.M, d.y + 18, 'Cut-off analysis report', 18, true); d.y += 26;
+  d.para('File: ' + M.file + '   ·   generated ' + M.date + ' with beamCutoff', { size: 8.5, color: '#525a66', after: 8 });
+  if (M.verdictBanner) d.para(M.verdictBanner, { size: 9, color: M.type === 'none' ? '#da1e28' : '#8e6a00', after: 6 });
+  M.warnings.forEach(w => d.para('Note: ' + w, { size: 8, color: '#8e6a00', after: 2 }));
+  // summary tiles as a 3-column grid
+  const cols = 3, gap = 1, tw = (d.CW - gap * (cols - 1)) / cols;
+  for (let i = 0; i < M.tiles.length; i += cols) {
+    const row = M.tiles.slice(i, i + cols);
+    const hs = row.map(t => { const v = d.wrap(t.v, 12, true, tw - 16), s = d.wrap(t.s, 7.6, false, tw - 16); return { v, s, h: 10 + 9 + v.length * 14 + s.length * 9.5 + 8 }; });
+    const h = Math.max(...hs.map(x => x.h));
+    d.ensure(h + 2);
+    row.forEach((t, k) => {
+      const x = d.M + k * (tw + gap);
+      d.rect(x, d.y, tw, h, '#f2f4f8');
+      if (t.st) d.rect(x, d.y, 3, h, t.st === 'ok' ? '#198038' : '#da1e28');
+      let yy = d.y + 15;
+      d.text(x + 10, yy, t.k.toUpperCase(), 6.6, true, '#525a66'); yy += 15;
+      hs[k].v.forEach(ln => { d.text(x + 10, yy, ln, 12, true); yy += 14; });
+      hs[k].s.forEach(ln => { d.text(x + 10, yy - 2, ln, 7.6, false, '#525a66'); yy += 9.5; });
+    });
+    d.y += h + gap;
+  }
+  d.y += 4;
+  d.heading('Settings'); d.kv(M.settings);
+  if (imgs.map) {
+    d.heading('Candela map'); d.image(imgs.map);
+    d.para(MAP_CAPTION, { size: 7.4, color: '#525a66', after: 6 });
+    d.heading('Vertical scans and cut-off line'); d.imagesSideBySide(imgs.vscan, imgs.cline);
+    d.para('Left: log I (solid) and G (dashed) at 1.5°, 2.5°, 3.5° on the horizontal part. Right: inflection position per vertical scan, dashed grey G. File angles.', { size: 7.4, color: '#525a66', after: 6 });
+  }
+  if (M.cut) { d.heading('Cut-off quality and aiming (Annex 6)'); d.table(M.cut, [0.44, 0.15, 0.14, 0.17, 0.10]); d.kv(M.kink); }
+  if (M.reg) {
+    d.heading(M.regTitle); d.para(M.regSub, { size: 8, color: '#525a66', after: 4 });
+    d.table(M.reg, [0.25, 0.22, 0.14, 0.17, 0.12, 0.10], { boldFirst: true, size: 7.6 });
+  }
+  if (M.robust) {
+    d.heading('Aim robustness');
+    d.para('Failing photometric items when the aimed beam is moved away from nominal. Outlined cell: nominal aim.', { size: 8, color: '#525a66', after: 4 });
+    d.table(M.robust, [0.2, 0.16, 0.16, 0.16, 0.16, 0.16], { center: true });
+  }
+  d.heading('Additional beam data'); d.kv(M.extra);
+  if (M.ranges) d.table(M.ranges, [0.6, 0.2, 0.2]);
+  d.heading('File'); d.kv(M.fileKv);
+  d.heading('Method'); M.notes.forEach(n => d.bullet(n));
+  return d.build('beamCutoff · UN R149 (00 series) Class C · ' + M.file.slice(0, 70));
+}
+
+/* ----- saving ----- */
+let framed = true; try { framed = window.self !== window.top; } catch (e) { framed = true; }
+let dlNs;
+async function downloadsNs() {
+  if (dlNs !== undefined) return dlNs;
+  try { dlNs = (window.claude && typeof window.claude.use === 'function') ? await window.claude.use('downloads') : null; } catch (e) { dlNs = null; }
+  return dlNs;
+}
+function say(t) { $('copyStatus').textContent = t; }
+async function saveFile(name, data, mime) {
+  if (!framed) {
+    const blob = new Blob([data], { type: mime }), a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    say('Saved ' + name + '.'); return;
+  }
+  const ns = await downloadsNs();
+  if (!ns) { say('Downloads are not available in this view. Open the tool on GitHub Pages to save the file.'); return; }
+  try { await ns.save({ filename: name, data: new Blob([data], { type: mime }) }); say('Saved ' + name + '.'); }
+  catch (e) { say(e && e.code === 'declined' ? 'Download cancelled.' : 'Could not save the file' + (e && e.message ? ': ' + e.message : '.')); }
+}
+async function makeReport(kind) {
+  if (!state.res) { say('Load an IES file first.'); return; }
+  say('Building the ' + kind.toUpperCase() + ' report…');
+  await new Promise(r => setTimeout(r, 20));
+  try {
+    const M = buildModel(), imgs = captureCharts();
+    if (kind === 'pdf') await saveFile(baseName() + '_cutoff_report.pdf', pdfReport(M, imgs), 'application/pdf');
+    else await saveFile(baseName() + '_cutoff_report.html', htmlReport(M, imgs), 'text/html');
+  } catch (e) { console.error(e); say('Report failed: ' + e.message); }
+}
+async function copy(text, label) {
+  try { await navigator.clipboard.writeText(text); say(label + ' copied to the clipboard.'); }
+  catch (e) { say('The browser blocked clipboard access.'); }
+}
+$('btnPdf').addEventListener('click', () => makeReport('pdf'));
+$('btnHtml').addEventListener('click', () => makeReport('html'));
+$('btnCsv').addEventListener('click', () => { if (state.res) saveFile(baseName() + '_cutoff.csv', csvReport(), 'text/csv'); });
+$('btnJson').addEventListener('click', () => copy(jsonReport(), 'JSON report'));
+window.__bcReport = { buildModel, captureCharts, htmlReport, pdfReport };
+
+loadExample();
+})();
+</script>
+</body>
+</html>
