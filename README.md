@@ -32,7 +32,7 @@ IES LM-63 files with H-V photometry (Type A/B, H right +, V up +) or Type C (map
 
 | Path | Content |
 |---|---|
-| `index.html` | The built single-file tool (served by GitHub Pages) |
+| `index.html` | The built tool (served by GitHub Pages). Styles come from the shared [beamKit](https://jalibakthermk.github.io/beamkit/demo.html) framework plus beamCutoff-specific CSS |
 | `favicon.svg` | Logo / icon (the favicon is also inlined in `index.html`) |
 | `src/core.js` | IES parser, cut-off analysis, R149 Class C table and check (no DOM; also runs in Node) |
 | `src/report.js` | PDF writer (no dependencies), HTML report, CSV/JSON export |
