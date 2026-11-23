@@ -22,6 +22,11 @@ function tableData(tbl) {
 const kvData = (el) => [...el.children].filter(d => d.children.length >= 2).map(d => [d.children[0].innerText.trim(), d.children[1].innerText.trim()]);
 
 function buildModel() {
+  const tr = $('tblReg'), had = tr.classList.contains('only-fail');
+  tr.classList.remove('only-fail');
+  try { return buildModelInner(); } finally { if (had) tr.classList.add('only-fail'); }
+}
+function buildModelInner() {
   const r = state.res, o = r.options;
   const tiles = [...$('tiles').children].map(t => ({
     k: t.querySelector('.k').innerText.trim(), v: t.querySelector('.v').innerText.trim(), s: t.querySelector('.s').innerText.trim(),
@@ -38,10 +43,15 @@ function buildModel() {
     ['Mounting height', fmt(o.mountH, 2) + ' m']
   ];
   const warnings = [...$('banners').querySelectorAll('li')].map(li => li.innerText.trim());
+  if (state.isExample) warnings.unshift('Built-in synthetic example beam, not a real lamp.');
+  const vEl = $('verdict');
+  const verdict = { big: vEl.querySelector('.big').innerText.trim(), what: vEl.querySelector('.what').innerText.trim(),
+    st: vEl.classList.contains('ok') ? 'ok' : vEl.classList.contains('bad') ? 'bad' : 'na',
+    fails: [...vEl.querySelectorAll('.fails button')].map(b => (b.querySelector('b').innerText + ' ' + b.querySelector('span').innerText).replace(/\s+/g, ' ').trim()) };
   const verdictBanner = r.verdict && r.type !== 'asym' ? r.verdict : null;
   const asym = r.type === 'asym';
   return {
-    file: state.name, date: PRINT_DATE(), example: state.isExample, type: r.type, tiles, settings, warnings, verdictBanner,
+    file: state.name, date: PRINT_DATE(), example: state.isExample, type: r.type, tiles, verdict, settings, warnings, verdictBanner,
     cut: r.type !== 'none' ? tableData($('tblCut')) : null,
     kink: r.type !== 'none' ? kvData($('kinkKv')) : [],
     regTitle: asym ? $('regTitle').innerText : null, regSub: asym ? $('regSub').innerText : null,
@@ -92,9 +102,9 @@ function htmlReport(M, imgs) {
     '<title>Cut-off report: ' + e(M.file) + '</title><style>' +
     ':root{--text:#161616;--t2:#525a66;--rule:#d5d9e0;--accent:#0f62fe;--ok:#198038;--bad:#da1e28;--okbg:#defbe6;--badbg:#fff1f1;--cut:#d02670;color-scheme:light}' +
     '*{box-sizing:border-box}body{margin:0;background:#fff;color:var(--text);font:13px/1.45 "IBM Plex Sans","Segoe UI",Roboto,Helvetica,Arial,sans-serif}' +
-    '.page{max-width:1000px;margin:0 auto;padding:32px 28px 48px}h1{font-size:24px;margin:0 0 4px;font-weight:600}h2{font-size:16px;margin:28px 0 10px;padding-bottom:6px;border-bottom:2px solid var(--text);font-weight:600}' +
+    '.verdict{display:flex;gap:18px;align-items:center;border:1px solid var(--rule);border-left:6px solid var(--t2);padding:12px 16px;margin-top:16px}.verdict.ok{border-left-color:var(--ok)}.verdict.bad{border-left-color:var(--bad)}.verdict .big{font-size:24px;font-weight:600}.verdict.ok .big{color:var(--ok)}.verdict.bad .big{color:var(--bad)}.verdict .what{color:var(--t2);font-size:12.5px}.verdict .fl{color:var(--bad);margin-top:4px}.brand{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:14px}.brand b{font-weight:600}.page{max-width:1000px;margin:0 auto;padding:32px 28px 48px}h1{font-size:24px;margin:0 0 4px;font-weight:600}h2{font-size:16px;margin:28px 0 10px;padding-bottom:6px;border-bottom:2px solid var(--text);font-weight:600}' +
     '.meta{color:var(--t2);font-size:12.5px}.mono,td.num,th.num{font-family:"IBM Plex Mono",Consolas,monospace;font-variant-numeric:tabular-nums}' +
-    '.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);margin-top:16px}.tile{background:#fff;padding:10px 12px}.tile.ok{box-shadow:inset 4px 0 0 var(--ok)}.tile.bad{box-shadow:inset 4px 0 0 var(--bad)}' +
+    '.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin-top:16px}.tile{background:#fff;padding:10px 12px}.tile.ok{box-shadow:inset 4px 0 0 var(--ok)}.tile.bad{box-shadow:inset 4px 0 0 var(--bad)}' +
     '.tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--t2)}.tile .v{font-size:17px;font-weight:600}.tile .s{font-size:11.5px;color:var(--t2)}' +
     'img{max-width:100%;display:block;border:1px solid var(--rule)}.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}.cap{font-size:11.5px;color:var(--t2);margin:6px 0 0}' +
     'table{border-collapse:collapse;width:100%;font-size:12px;margin:6px 0}th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--t2);padding:6px 8px;border-bottom:1px solid var(--t2)}' +
@@ -107,9 +117,11 @@ function htmlReport(M, imgs) {
     '@media(max-width:700px){.tiles,.two,.kv{grid-template-columns:1fr}}' +
     '@page{size:A4;margin:14mm}@media print{.page{padding:0;max-width:none}h2{break-after:avoid}table,img,.tiles{break-inside:avoid}tr{break-inside:avoid}}' +
     '</style></head><body><div class="page">' +
+    '<div class="brand"><svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><defs><radialGradient id="g" cx="0.55" cy="0.68" r="0.62"><stop offset="0" stop-color="#fff6d6"/><stop offset="0.22" stop-color="#ffe14d"/><stop offset="0.5" stop-color="#3cbf8a"/><stop offset="0.78" stop-color="#1f78b4"/><stop offset="1" stop-color="#1d3a8a"/></radialGradient><clipPath id="c"><rect width="32" height="32" rx="7"/></clipPath></defs><g clip-path="url(#c)"><rect width="32" height="32" fill="#0a0f2c"/><path d="M0 19.5H14L18.5 14.5H32V32H0Z" fill="url(#g)"/><path d="M3 19.5H14L18.5 14.5H29" fill="none" stroke="#ff7eb6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="14" cy="19.5" r="1.9" fill="#fff"/></g></svg><span>beam<b>Cutoff</b></span></div>' +
     '<h1>Cut-off analysis report</h1><div class="meta">File <span class="mono">' + e(M.file) + '</span> · generated ' + e(M.date) + ' with beamCutoff</div>' +
     (M.verdictBanner ? '<div class="note' + (M.type === 'none' ? ' bad' : '') + '">' + e(M.verdictBanner) + '</div>' : '') +
     (M.warnings.length ? '<div class="note"><strong>Notes on this file</strong><ul>' + M.warnings.map(w => '<li>' + e(w) + '</li>').join('') + '</ul></div>' : '') +
+    '<div class="verdict ' + M.verdict.st + '"><div class="big">' + e(M.verdict.big) + '</div><div class="what">' + e(M.verdict.what) + (M.verdict.fails.length ? '<div class="fl">Failing: ' + M.verdict.fails.map(e).join(' · ') + '</div>' : '') + '</div></div>' +
     '<div class="tiles">' + M.tiles.map(t => '<div class="tile' + (t.st ? ' ' + t.st : '') + '"><div class="k">' + e(t.k) + '</div><div class="v">' + e(t.v) + '</div><div class="s">' + e(t.s) + '</div></div>').join('') + '</div>' +
     '<h2>Settings</h2>' + kv(M.settings) +
     (imgs.map ? '<h2>Candela map</h2>' + img(imgs.map, 'Candela map') + '<p class="cap">' + e(MAP_CAPTION) + '</p>' +
@@ -199,8 +211,8 @@ const PDF = (function () {
       lines.forEach((ln, i) => { this.ensure(lh); if (i === 0) this.text(this.M + 2, this.y + size, '·', size, true, '#525a66'); this.text(this.M + ind, this.y + size, ln, size, false, '#525a66'); this.y += lh; });
       this.y += 2;
     }
-    heading(s) {
-      this.ensure(60); this.y += 10;
+    heading(s, keep) {
+      this.ensure(keep || 60); this.y += 10;
       this.text(this.M, this.y + 12, s, 12, true); this.y += 17;
       this.line(this.M, this.y, this.M + this.CW, this.y, '#161616', 1.2); this.y += 7;
     }
@@ -270,6 +282,16 @@ const PDF = (function () {
       this.cur.push('q ' + n2(w) + ' 0 0 ' + n2(h) + ' ' + n2(this.M) + ' ' + n2(this.H - this.y - h) + ' cm /Im' + id + ' Do Q');
       this.y += h + 4;
     }
+    logo(x, y, z) { // vector version of the beamCutoff mark, z = size in pt
+      const P = (px, py) => n2(x + px * z / 32) + ' ' + n2(this.H - (y + py * z / 32));
+      this.cur.push(rgb('#0a0f2c') + ' rg ' + n2(x) + ' ' + n2(this.H - y - z) + ' ' + n2(z) + ' ' + n2(z) + ' re f');
+      this.cur.push(rgb('#1f5fb8') + ' rg ' + P(0, 19.5) + ' m ' + P(14, 19.5) + ' l ' + P(18.5, 14.5) + ' l ' + P(32, 14.5) + ' l ' + P(32, 32) + ' l ' + P(0, 32) + ' l h f');
+      this.cur.push(rgb('#3cbf8a') + ' rg ' + P(2, 21) + ' m ' + P(14.5, 21) + ' l ' + P(19, 16) + ' l ' + P(30, 16) + ' l ' + P(30, 32) + ' l ' + P(2, 32) + ' l h f');
+      this.cur.push(rgb('#ffe14d') + ' rg ' + P(7, 22.5) + ' m ' + P(15, 22.5) + ' l ' + P(19.5, 17.5) + ' l ' + P(26, 17.5) + ' l ' + P(25, 29) + ' l ' + P(8, 29) + ' l h f');
+      this.cur.push(rgb('#ff7eb6') + ' RG ' + n2(2.2 * z / 32) + ' w 1 J 1 j ' + P(3, 19.5) + ' m ' + P(14, 19.5) + ' l ' + P(18.5, 14.5) + ' l ' + P(29, 14.5) + ' l S');
+      const r = 1.9 * z / 32, cx = x + 14 * z / 32, cy = this.H - (y + 19.5 * z / 32), k = 0.5523 * r;
+      this.cur.push('1 1 1 rg ' + n2(cx + r) + ' ' + n2(cy) + ' m ' + n2(cx + r) + ' ' + n2(cy + k) + ' ' + n2(cx + k) + ' ' + n2(cy + r) + ' ' + n2(cx) + ' ' + n2(cy + r) + ' c ' + n2(cx - k) + ' ' + n2(cy + r) + ' ' + n2(cx - r) + ' ' + n2(cy + k) + ' ' + n2(cx - r) + ' ' + n2(cy) + ' c ' + n2(cx - r) + ' ' + n2(cy - k) + ' ' + n2(cx - k) + ' ' + n2(cy - r) + ' ' + n2(cx) + ' ' + n2(cy - r) + ' c ' + n2(cx + k) + ' ' + n2(cy - r) + ' ' + n2(cx + r) + ' ' + n2(cy - k) + ' ' + n2(cx + r) + ' ' + n2(cy) + ' c f');
+    }
     imagesSideBySide(c1, c2) {
       const gap = 12, w = (this.CW - gap) / 2, h = Math.max(w * c1.height / c1.width, w * c2.height / c2.width);
       this.ensure(h + 4);
@@ -321,10 +343,23 @@ const PDF = (function () {
 
 function pdfReport(M, imgs) {
   const d = new PDF.Doc('Cut-off report: ' + M.file);
+  d.logo(d.M, d.y, 20); d.text(d.M + 27, d.y + 14, 'beam', 11, false); d.text(d.M + 27 + d.width('beam', 11, false), d.y + 14, 'Cutoff', 11, true); d.y += 32;
   d.text(d.M, d.y + 18, 'Cut-off analysis report', 18, true); d.y += 26;
   d.para('File: ' + M.file + '   ·   generated ' + M.date + ' with beamCutoff', { size: 8.5, color: '#525a66', after: 8 });
   if (M.verdictBanner) d.para(M.verdictBanner, { size: 9, color: M.type === 'none' ? '#da1e28' : '#8e6a00', after: 6 });
   M.warnings.forEach(w => d.para('Note: ' + w, { size: 8, color: '#8e6a00', after: 2 }));
+  { // verdict box
+    const V = M.verdict, col = V.st === 'ok' ? '#198038' : V.st === 'bad' ? '#da1e28' : '#525a66';
+    const bw = d.width(V.big, 20, true), tx = d.M + 24 + bw + 18, tw2 = d.M + d.CW - tx - 12;
+    const wl = d.wrap(V.what, 8.6, false, tw2), fl = V.fails.length ? d.wrap('Failing: ' + V.fails.join(' · '), 8, true, tw2) : [];
+    const h = Math.max(40, 16 + wl.length * 11.5 + fl.length * 10.5 + 6);
+    d.ensure(h + 8);
+    d.rect(d.M, d.y, d.CW, h, '#f2f4f8'); d.rect(d.M, d.y, 5, h, col);
+    d.text(d.M + 18, d.y + h / 2 + 7, V.big, 20, true, col);
+    let yy = d.y + 8 + 9; wl.forEach(ln => { d.text(tx, yy, ln, 8.6, false, '#161616'); yy += 11.5; });
+    fl.forEach(ln => { d.text(tx, yy, ln, 8, true, '#da1e28'); yy += 10.5; });
+    d.y += h + 6;
+  }
   // summary tiles as a 3-column grid
   const cols = 3, gap = 1, tw = (d.CW - gap * (cols - 1)) / cols;
   for (let i = 0; i < M.tiles.length; i += cols) {
@@ -346,9 +381,9 @@ function pdfReport(M, imgs) {
   d.y += 4;
   d.heading('Settings'); d.kv(M.settings);
   if (imgs.map) {
-    d.heading('Candela map'); d.image(imgs.map);
+    d.heading('Candela map', 330); d.image(imgs.map);
     d.para(MAP_CAPTION, { size: 7.4, color: '#525a66', after: 6 });
-    d.heading('Vertical scans and cut-off line'); d.imagesSideBySide(imgs.vscan, imgs.cline);
+    d.heading('Vertical scans and cut-off line', 240); d.imagesSideBySide(imgs.vscan, imgs.cline);
     d.para('Left: log I (solid) and G (dashed) at 1.5°, 2.5°, 3.5° on the horizontal part. Right: inflection position per vertical scan, dashed grey G. File angles.', { size: 7.4, color: '#525a66', after: 6 });
   }
   if (M.cut) { d.heading('Cut-off quality and aiming (Annex 6)'); d.table(M.cut, [0.44, 0.15, 0.14, 0.17, 0.10]); d.kv(M.kink); }
@@ -376,7 +411,7 @@ async function downloadsNs() {
   try { dlNs = (window.claude && typeof window.claude.use === 'function') ? await window.claude.use('downloads') : null; } catch (e) { dlNs = null; }
   return dlNs;
 }
-function say(t) { $('copyStatus').textContent = t; }
+function say(t) { $('copyStatus').textContent = t; toast(t); }
 async function saveFile(name, data, mime) {
   if (!framed) {
     const blob = new Blob([data], { type: mime }), a = document.createElement('a');

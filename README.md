@@ -1,3 +1,5 @@
+<img src="favicon.svg" width="56" alt="beamCutoff logo">
+
 # beamCutoff
 
 Low-beam cut-off analyser for headlamp IES files, with a UN R149 passing-beam check (00 series, Class C).
@@ -18,6 +20,10 @@ The IES file is read in your browser. Nothing is uploaded.
 - **Additional data**: luminous flux (total, above H-H), Imax position, HV, 75R/B50L ratio, beam spread, cut-off reach on the road and 1 lx / 3 lx road illuminance reach for a given mounting height.
 - **Reports**: PDF and HTML report download, CSV download, JSON copy.
 
+## Using it
+
+Open an IES file with **Open IES**, the drop zone, or by dropping it anywhere on the page. The verdict bar at the top lists any failing item; click one to jump to its row. The section bar under it moves between the map, scans, cut-off quality, photometry, aim robustness and beam data. Export the report from **PDF report** or the **Export** menu (HTML, CSV, JSON). Settings that are rarely changed (file axes, aim offsets, detector aperture, mounting height) are under **Advanced**.
+
 ## Input
 
 IES LM-63 files with H-V photometry (Type A/B, H right +, V up +) or Type C (mapped H = C, V = γ − 90°). Axis flip options handle files with V positive down or H positive left. For a reliable gradient use a vertical resolution of 0.05° or finer.
@@ -27,6 +33,7 @@ IES LM-63 files with H-V photometry (Type A/B, H right +, V up +) or Type C (map
 | Path | Content |
 |---|---|
 | `index.html` | The built single-file tool (served by GitHub Pages) |
+| `favicon.svg` | Logo / icon (the favicon is also inlined in `index.html`) |
 | `src/core.js` | IES parser, cut-off analysis, R149 Class C table and check (no DOM; also runs in Node) |
 | `src/report.js` | PDF writer (no dependencies), HTML report, CSV/JSON export |
 | `src/example.js` | Synthetic example beam shown on start-up (not a real lamp) |
