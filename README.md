@@ -2,7 +2,7 @@
 
 # beamCutoff
 
-Low-beam cut-off analyser for headlamp IES files, with a UN R149 passing-beam check (00 series, Class C).
+Low-beam cut-off analyser for headlamp IES files, with UN R149 passing-beam checks (00 series): Class C (asymmetric) and Classes CS and DS (symmetrical).
 
 **Live tool:** https://jalibakthermk.github.io/beamCutoff/
 
@@ -16,6 +16,7 @@ The IES file is read in your browser. Nothing is uploaded.
 - **Cut-off gradient G** on the file grid and with the Annex 6 detector apertures (10 m / Ø10 mm, 25 m / Ø30 mm).
 - **Kink position** by three methods: geometric line intersection, 0.2D line scan (Annex 6 §3.2 a) and three-line method 1R/2R/3R (Annex 6 §3.2 b).
 - **UN R149 Class C check** after aiming: all Table 9 test points and segments, Zone III and Imax, with margins. Cut-off quality: one cut-off, G ≥ 0.13, G ≤ 0.40 (25 m), linearity ≤ 0.2°, aimed cut-off position.
+- **UN R149 Class CS / DS check** for symmetrical passing beams: Table 35 points 1–15, Line 1, Zones 1 and 2 and the sums of points 8+9+10 and 11+12+13. The cut-off inflection on V-V is aimed to 0.57°D. Cut-off quality: one cut-off, G ≥ 0.08 at 2.5°L and 2.5°R, cut-off within ±0.3° between 3°L and 3°R. **Auto** picks Class C for a beam with a kink and CS for a flat cut-off.
 - **Aim robustness**: failing items for vertical ±0.3° and horizontal ±0.5° aim deviation.
 - **Additional data**: luminous flux (total, above H-H), Imax position, HV, 75R/B50L ratio, beam spread, cut-off reach on the road and 1 lx / 3 lx road illuminance reach for a given mounting height.
 - **Reports**: PDF and HTML report download, CSV download, JSON copy.
@@ -34,16 +35,16 @@ IES LM-63 files with H-V photometry (Type A/B, H right +, V up +) or Type C (map
 |---|---|
 | `index.html` | The built tool (served by GitHub Pages). Styles come from the shared [beamKit](https://jalibakthermk.github.io/beamkit/demo.html) framework plus beamCutoff-specific CSS |
 | `favicon.svg` | Logo / icon (the favicon is also inlined in `index.html`) |
-| `src/core.js` | IES parser, cut-off analysis, R149 Class C table and check (no DOM; also runs in Node) |
+| `src/core.js` | IES parser, cut-off analysis, R149 Class C, CS and DS tables and checks (no DOM; also runs in Node) |
 | `src/report.js` | PDF writer (no dependencies), HTML report, CSV/JSON export |
 | `src/example.js` | Synthetic example beam shown on start-up (not a real lamp) |
 | `src/index.src.html` | Page template |
 | `src/build.py` | Builds `index.html` from the sources: `python3 src/build.py` |
-| `tests/` | Synthetic beam generators and a Node test runner: `./tests/gen_all.sh` (needs numpy) |
+| `tests/` | Synthetic beam generators and a Node test runner: `./tests/gen_all.sh` (needs numpy); `CLS=DS node tests/run_test.js file.ies` forces a class |
 
 ## Limits
 
-Photometric limits are taken from the published text of UN R149, 00 series. Verify them against your controlled copy of the regulation (00 series, Supplement 6) before using results for approval work. Not covered: other passing-beam classes (V, E, W, A/B/D), bending mode, symmetric passing beams (AS–ES), colour and stability tests. One lamp is evaluated with its full intensity.
+Photometric limits are taken from the published text of UN R149, 00 series. Verify them against your controlled copy of the regulation (00 series, Supplement 6) before using results for approval work. The CS/DS sums for points 8+9+10 and 11+12+13 are not legible in the published 00-series text; the values used (150 cd and 300 cd) come from the later R149 text. Not covered: other passing-beam classes (V, E, W, A/B/D, AS, BS, ES), bending mode, colour and stability tests. One lamp is evaluated with its full intensity.
 
 ## Licence
 

@@ -234,6 +234,7 @@
   /* Table 11 (Zone III). Values in cd. For LHT, L and R are swapped.    */
   /* ------------------------------------------------------------------ */
   const ZONE_IIIa = [[-8, 1], [-8, 4], [8, 4], [8, 2], [6, 1.5], [1.5, 1.5], [0, 0], [-4, 0]];
+  const ZONE_1 = [[-8, 1], [-8, 4], [8, 4], [8, 1], [4, 0], [1, 0], [0, 0.6], [-1, 0], [-4, 0]]; // symmetrical beams
 
   function classTable(cls) {
     // helper constructors
@@ -266,10 +267,41 @@
         RG('Imax', -0.5, 3, -1.72, -0.3, 16900, 44100, 'Segment Imax 0.5L–3R / 0.3D–1.72D')
       ]
     };
+    // Symmetrical passing beam, Classes CS and DS (UN R149 00 series, Table 35)
+    const posS = 'position lamp(s) may be switched on (applicant\'s choice)';
+    const sym = (ds) => [
+      ZN('Zone 1', ZONE_1, 900),
+      RG('Zone 2', -8, 8, 4.05, 15, null, 700, 'above 4°U up to 15°U, 8°L…8°R'),
+      P('Point 8 (4°U 8°L)', -8, 4, null, 700),
+      P('Point 9 (4°U V)', 0, 4, null, 700),
+      P('Point 10 (4°U 8°R)', 8, 4, null, 700),
+      S('Points 8+9+10', [[-8, 4], [0, 4], [8, 4]], 150, posS),
+      P('Point 11 (2°U 4°L)', -4, 2, null, 900),
+      P('Point 12 (2°U V)', 0, 2, null, 900),
+      P('Point 13 (2°U 4°R)', 4, 2, null, 900),
+      S('Points 11+12+13', [[-4, 2], [0, 2], [4, 2]], 300, posS),
+      P('Point 4 (1.5°L)', -1.5, 0.5, null, 900),
+      P('Point 4 (1.5°R)', 1.5, 0.5, null, 900),
+      P('Point 14 (8°L)', -8, 0, 50, null, posS),
+      P('Point 14 (8°R)', 8, 0, 50, null, posS),
+      P('Point 15 (4°L)', -4, 0, 100, 900, posS),
+      P('Point 15 (4°R)', 4, 0, 100, 900, posS),
+      P('Point 7 (HV)', 0, 0, null, 1700),
+      P('Point 1 (3.5°R)', 3.5, -0.86, 2000, 13750),
+      P('Point 2 (V)', 0, -0.86, ds ? 4900 : 2450, null, 'matched pair: each lamp at least 50 % of the minimum'),
+      P('Point 3 (3.5°L)', -3.5, -0.86, 2000, 13750),
+      HS('Line 1', -2, -9, 9, 1350, null, 'all', 'every point 9°L…9°R'),
+      P('Point 5 (15°L)', -15, -2, ds ? 1100 : 550, null),
+      P('Point 5 (15°R)', 15, -2, ds ? 1100 : 550, null),
+      P('Point 6 (20°L)', -20, -4, ds ? 300 : 150, null),
+      P('Point 6 (20°R)', 20, -4, ds ? 300 : 150, null)
+    ];
+    t.CS = sym(false); t.DS = sym(true);
     return t[cls];
   }
-  // allowed aimed position of the horizontal cut-off (Table 10, item B), degrees (negative = down)
-  const CUTOFF_RANGE = { C: [-0.57, -0.57] };
+  // allowed aimed position of the horizontal cut-off, degrees (negative = down)
+  const CUTOFF_RANGE = { C: [-0.57, -0.57], CS: [-0.57, -0.57], DS: [-0.57, -0.57] };
+  const SYM_CLASSES = ['CS', 'DS'];
 
   function pointInPoly(x, y, poly) {
     let inside = false;
@@ -333,7 +365,7 @@
       case 'hseg': return fv(el.v) + ', ' + fh(el.h1) + ' … ' + fh(el.h2);
       case 'rect': return fv(el.v2) + '…' + fv(el.v1) + ', ' + fh(el.h1) + '…' + fh(el.h2);
       case 'below': return fv(el.v) + ' and below, ' + fh(el.h1) + '…' + fh(el.h2);
-      case 'zone': return 'polygon (Table 11)';
+      case 'zone': return el.id === 'Zone 1' ? 'polygon (Table 35)' : 'polygon (Table 11)';
     }
   }
 
@@ -407,11 +439,14 @@
       else type = 'sym';
     } else { type = 'asym'; traffic = sharpL ? 'RHT' : 'LHT'; }
     const detectedTraffic = traffic;
+    let cls = o.cls || 'auto';
+    if (cls === 'auto') cls = type === 'sym' ? 'CS' : 'C';
+    const symCls = SYM_CLASSES.includes(cls);
     if (o.traffic !== 'auto' && type !== 'none') { if (type === 'asym' || o.forceAsym) traffic = o.traffic; }
     if (o.traffic !== 'auto' && type === 'asym' && detectedTraffic && o.traffic !== detectedTraffic) warnings.push('Traffic side forced to ' + o.traffic + ' although the cut-off shape indicates ' + detectedTraffic + '.');
 
     const res = {
-      type, traffic, detectedTraffic, rawLine, vLeftRaw: vLeft, vRightRaw: vRight, deltaRaw: delta, warnings,
+      type, traffic, detectedTraffic, cls, symClass: symCls, rawLine, vLeftRaw: vLeft, vRightRaw: vRight, deltaRaw: delta, warnings,
       scansRaw: { L: sL, R: sR }, floorCd, options: o, grid: { H0: g.H[0], H1: g.H[g.nH - 1], V0: vMin, V1: vMax, hRes: g.hRes, vRes: g.vRes, nH: g.nH, nV: g.nV, Imax: g.Imax, ImaxAt: g.ImaxAt }
     };
     res.fluxRaw = flux(g, 0);
@@ -420,15 +455,26 @@
       return res;
     }
 
-    // 2. canonical frame (RHT): mirror LHT files
-    const m = traffic === 'LHT' ? -1 : 1;
+    if (symCls && type === 'asym') warnings.push('Class ' + cls + ' is for symmetrical passing beams, but this cut-off has a kink (' + traffic + '). It was checked with the symmetrical procedure anyway.');
+    if (symCls && vMax < 15) warnings.push('V range ends at ' + vMax + '°U. Zone 2 of Class ' + cls + ' reaches 15°U; the part outside the file is treated as 0 cd.');
+    res.hasKink = type === 'asym' && !symCls;
+
+    // 2. canonical frame (RHT): mirror LHT files (not for symmetrical classes)
+    const m = traffic === 'LHT' && !symCls ? -1 : 1;
     res.mirror = m;
     const fc = transformed(fRaw, m, 0, 0);
     const fcNoAp = transformed(f0, m, 0, 0);
 
     // horizontal-part scans at 1.5/2.5/3.5 (L in canonical frame). For symmetric beams also R side.
     const s25 = vscan(fc, -2.5, win[0], win[1], floorCd), s15 = vscan(fc, -1.5, win[0], win[1], floorCd), s35 = vscan(fc, -3.5, win[0], win[1], floorCd);
-    const vCut = s25.v;
+    let vCut = s25.v;
+    res.cutRef = (m === -1 ? '2.5°R' : '2.5°L');
+    if (symCls) { // symmetrical procedure: inflection on V-V is the aiming reference
+      const sV = vscan(fc, 0, win[0], win[1], floorCd), s3L = vscan(fc, -3, win[0], win[1], floorCd), s3R = vscan(fc, 3, win[0], win[1], floorCd);
+      res.scanV = sV; res.scan3L = s3L; res.scan3R = s3R;
+      if (isFinite(sV.v) && sV.G >= 0.05) { vCut = sV.v; res.cutRef = 'V-V'; }
+      else { warnings.push('No clear cut-off on V-V; the 2.5°L scan was used for vertical aim.'); }
+    }
     res.scan25 = s25; res.scan15 = s15; res.scan35 = s35;
     const infl = [s15.v, s25.v, s35.v];
     res.linearity = Math.max(...infl) - Math.min(...infl);
@@ -439,9 +485,12 @@
     res.G_25m = vscan(transformed(withAperture(f0, APERTURE['25m']), m, 0, 0), sideX, win[0], win[1], floorCd, 0.01).G;
     res.G_grid = vscan(fcNoAp, sideX, win[0], win[1], floorCd, 0.01).G;
     res.nCutoffs = s25.peaks.length;
-    if (type === 'sym') {
+    if (type === 'sym' || symCls) {
       const s25r = vscan(fc, 2.5, win[0], win[1], floorCd);
       res.scan25R = s25r; res.G25R = s25r.G;
+      res.G_10mR = vscan(transformed(withAperture(f0, APERTURE['10m']), m, 0, 0), 2.5, win[0], win[1], floorCd, 0.01).G;
+      res.G_25mR = vscan(transformed(withAperture(f0, APERTURE['25m']), m, 0, 0), 2.5, win[0], win[1], floorCd, 0.01).G;
+      res.nCutoffs = Math.max(res.nCutoffs, s25r.peaks.length);
     }
 
     // 3. vertical aim
@@ -453,9 +502,9 @@
     const cLine = cutoffLine(fc, -10, 10, 0.1, win, floorCd);
     res.cLine = cLine;
 
-    // 4. kink (asymmetric only)
+    // 4. kink (asymmetric classes only)
     let hk = null;
-    if (type === 'asym') {
+    if (res.hasKink) {
       const leftPts = cLine.filter(p => p.h >= -4 && p.h <= -1.5 && p.G >= 0.08);
       const vL = median(leftPts.map(p => p.v));
       const rightPts = cLine.filter(p => p.h >= 1.5 && p.h <= 5 && p.G >= 0.08);
@@ -534,9 +583,35 @@
     const vBottom = Math.max(vMin + dv, -30);
 
     // 5. regulation check
-    if (type === 'asym') {
-      res.check = regulationCheck(fa, o.cls, vBottom);
-      const rng = CUTOFF_RANGE[o.cls];
+    const robustGrid = () => {
+      const dvs = [-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3], dhs = [-0.5, -0.25, 0, 0.25, 0.5];
+      return { dvs, dhs, grid: dvs.map(a => dhs.map(b => {
+        const fx = transformed(fcNoAp, 1, dh + b, dv + a);
+        return regulationCheck(fx, cls, vBottom).filter(x => !x.pass).map(x => x.id);
+      })) };
+    };
+    if (symCls) {
+      res.check = regulationCheck(fa, cls, vBottom);
+      res.zonePoly = ZONE_1; res.zoneName = 'Zone 1';
+      const cq = [];
+      cq.push({ id: 'Number of cut-offs', value: res.nCutoffs, limit: '1', pass: res.nCutoffs <= 1, ref: 'Annex 6 (symmetrical)' });
+      const gL = Math.max(res.G_10m, res.G_25m), gR = Math.max(res.G_10mR, res.G_25mR);
+      cq.push({ id: 'Sharpness G at 2.5°L (best of 10 m/Ø10 mm, 25 m/Ø30 mm)', value: gL, limit: '≥ 0.08', pass: gL >= 0.08, ref: 'Annex 6 (symmetrical)' });
+      cq.push({ id: 'Sharpness G at 2.5°R (best of 10 m/Ø10 mm, 25 m/Ø30 mm)', value: gR, limit: '≥ 0.08', pass: gR >= 0.08, ref: 'Annex 6 (symmetrical)' });
+      const band = cLine.filter(p => Math.abs(p.h) <= 3 + 1e-9 && p.G >= 0.08 && isFinite(p.v));
+      const dev = band.length ? Math.max(...band.map(p => Math.abs(p.v + dv - o.target))) : NaN;
+      res.symBand = { dev, n: band.length };
+      cq.push({ id: 'Straightness 3°L…3°R (max deviation from aimed line)', value: dev, unit: 'deg', limit: '≤ 0.30°', pass: dev <= 0.3, ref: 'Annex 6 (symmetrical)' });
+      const d3L = Math.abs(res.scan3L.v + dv - o.target), d3R = Math.abs(res.scan3R.v + dv - o.target);
+      cq.push({ id: 'Inflection at 3°L from nominal', value: d3L, unit: 'deg', limit: '≤ 0.30°', pass: d3L <= 0.3, ref: 'Annex 6 (symmetrical)' });
+      cq.push({ id: 'Inflection at 3°R from nominal', value: d3R, unit: 'deg', limit: '≤ 0.30°', pass: d3R <= 0.3, ref: 'Annex 6 (symmetrical)' });
+      cq.push({ id: 'Aimed cut-off position on V-V (Class ' + cls + ')', value: res.cutoffAimed, limit: '0.57°D', pass: Math.abs(res.cutoffAimed - CUTOFF_RANGE[cls][0]) <= 0.005, ref: 'Annex 6 (symmetrical)' });
+      res.cutoffChecks = cq;
+      res.robust = robustGrid();
+    } else if (type === 'asym') {
+      res.check = regulationCheck(fa, cls, vBottom);
+      res.zonePoly = ZONE_IIIa; res.zoneName = 'Zone III';
+      const rng = CUTOFF_RANGE[cls];
       const cq = [];
       cq.push({ id: 'Number of cut-offs', value: res.nCutoffs, limit: '1', pass: res.nCutoffs <= 1, ref: 'Annex 6 §2.1' });
       const sd = traffic === 'LHT' ? 'R' : 'L', gMin = Math.max(res.G_10m, res.G_25m);
@@ -546,17 +621,11 @@
       if (o.hMethod === '02D') cq.push({ id: 'Kink gradient on 0.2D line', value: res.kinkA.G, limit: '≥ 0.08', pass: res.kinkA.G >= 0.08, ref: 'Annex 6 §3.2 (a)' });
       if (o.hMethod === '3line') cq.push({ id: 'Kink gradient on 1R/2R/3R lines (min)', value: res.kinkB.G, limit: '≥ 0.08', pass: res.kinkB.G >= 0.08, ref: 'Annex 6 §3.2 (b)' });
       const ca = res.cutoffAimed;
-      cq.push({ id: 'Aimed cut-off position (Class ' + o.cls + ')', value: ca, limit: rng[0] === rng[1] ? Math.abs(rng[0]) + '°D' : Math.abs(rng[1]) + '°D … ' + Math.abs(rng[0]) + '°D', pass: ca >= rng[0] - 0.005 && ca <= rng[1] + 0.005, ref: 'Table 10 B' });
+      cq.push({ id: 'Aimed cut-off position (Class ' + cls + ')', value: ca, limit: rng[0] === rng[1] ? Math.abs(rng[0]) + '°D' : Math.abs(rng[1]) + '°D … ' + Math.abs(rng[0]) + '°D', pass: ca >= rng[0] - 0.005 && ca <= rng[1] + 0.005, ref: 'Table 10 B' });
       if (o.aimMode !== 'full') cq.push({ id: 'Kink horizontal position from V-V', value: hk + dh, limit: '|x| ≤ 0.5°', pass: Math.abs(hk + dh) <= 0.5, ref: 'visual aim tolerance (info)' });
       res.cutoffChecks = cq;
 
-      // aim robustness
-      const dvs = [-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3], dhs = [-0.5, -0.25, 0, 0.25, 0.5];
-      res.robust = { dvs, dhs, grid: dvs.map(a => dhs.map(b => {
-        const fx = transformed(fcNoAp, 1, dh + b, dv + a);
-        const r = regulationCheck(fx, o.cls, vBottom);
-        return r.filter(x => !x.pass).map(x => x.id);
-      })) };
+      res.robust = robustGrid();
     }
 
     // 6. extra info
@@ -604,10 +673,10 @@
     // human-readable type
     if (type === 'asym') res.typeLabel = 'Asymmetric passing beam — ' + (traffic === 'RHT' ? 'right-hand traffic (RHT)' : 'left-hand traffic (LHT)');
     else res.typeLabel = 'Symmetric passing beam (flat cut-off, no kink)';
-    if (type === 'sym') res.verdict = 'Symmetric beam: cut-off analysis done; the R149 asymmetric tables (Classes C/V/E/W) do not apply. Symmetric classes (AS…ES) are not checked in this version.';
+    if (type === 'sym' && !symCls) res.verdict = 'Symmetric beam: the Class C table is for asymmetric passing beams. Choose Class CS or DS to check it as a symmetrical passing beam.';
     return res;
   }
 
-  const api = { parseIES, buildGrid, makeSampler, transformed, vscan, hscan, analyse, classTable, regulationCheck, CUTOFF_RANGE, ZONE_IIIa, flux, APERTURE };
+  const api = { parseIES, buildGrid, makeSampler, transformed, vscan, hscan, analyse, classTable, regulationCheck, CUTOFF_RANGE, ZONE_IIIa, ZONE_1, SYM_CLASSES, flux, APERTURE };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.BCCore = api;
 })(typeof window !== 'undefined' ? window : this);

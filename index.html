@@ -6,7 +6,7 @@
 <title>beamCutoff</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3CradialGradient id='g' cx='0.55' cy='0.68' r='0.62'%3E%3Cstop offset='0' stop-color='%23fff6d6'/%3E%3Cstop offset='0.22' stop-color='%23ffe14d'/%3E%3Cstop offset='0.5' stop-color='%233cbf8a'/%3E%3Cstop offset='0.78' stop-color='%231f78b4'/%3E%3Cstop offset='1' stop-color='%231d3a8a'/%3E%3C/radialGradient%3E%3CclipPath id='c'%3E%3Crect width='32' height='32' rx='7'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url%28%23c%29'%3E%3Crect width='32' height='32' fill='%230a0f2c'/%3E%3Cpath d='M0 19.5H14L18.5 14.5H32V32H0Z' fill='url%28%23g%29'/%3E%3Cpath d='M3 19.5H14L18.5 14.5H29' fill='none' stroke='%23ff7eb6' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='14' cy='19.5' r='2.1' fill='%23fff'/%3E%3C/g%3E%3C/svg%3E">
 <meta name="theme-color" content="#0a0f2c">
-<meta name="description" content="beamCutoff: low-beam cut-off analyser for headlamp IES files — beam type, kink, gradient and the UN R149 Class C check, in the browser.">
+<meta name="description" content="beamCutoff: low-beam cut-off analyser for headlamp IES files — beam type, kink, gradient and the UN R149 Class C, CS and DS checks, in the browser.">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <!-- beamKit: shared design framework for the lighting tools (https://jalibakthermk.github.io/beamkit/) -->
 <link rel="stylesheet" href="https://jalibakthermk.github.io/beamkit/beamkit.css">
@@ -163,6 +163,7 @@ html { scroll-behavior: smooth; }
 .fc-k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); }
 .fc-name { font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; }
 .fc-meta { font-size: 12px; color: var(--text-2); }
+.fc-ex { font-size: 12px; color: var(--text-2); }
 .link { background: none; border: 0; padding: 0; color: var(--accent); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
 .privacy { display: flex; gap: 8px; align-items: flex-start; border-left: 0; padding-left: 0; }
 .privacy svg { width: 16px; height: 16px; color: var(--ok); flex: none; }
@@ -275,7 +276,7 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
     <svg class="logo" width="28" height="28" aria-hidden="true"><use href="#logo"/></svg>
     <span class="wordmark">beam<b>Cutoff</b></span>
   </a>
-  <span class="shell-tag">Low-beam cut-off analyser · UN R149 Class C</span>
+  <span class="shell-tag">Low-beam cut-off analyser · UN R149 Classes C, CS, DS</span>
   <div class="shell-actions">
     <button class="sh-btn" id="btnOpen" type="button" title="Open an IES file">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13V3h4l1.5 1.5H14V13Z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg><span>Open IES</span></button>
@@ -307,7 +308,7 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
     </div>
     <input type="file" id="file" accept=".ies,.IES,.txt" class="hidden">
     <div class="file-card" id="fileCard">
-      <div class="fc-row"><span class="fc-k">Loaded</span><button class="link" id="btnExample" type="button">Load example</button></div>
+      <div class="fc-row"><span class="fc-k">Loaded</span><span class="fc-ex">Examples: <button class="link" id="btnExample" type="button">RHT</button> · <button class="link" id="btnExampleSym" type="button">symmetrical</button></span></div>
       <div class="fc-name" id="fileName">—</div>
       <div class="fc-meta" id="fileMeta"></div>
     </div>
@@ -317,7 +318,8 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
     <div class="rail-settings" id="railSettings">
       <div class="group">
         <h3>Regulation</h3>
-        <div class="fixed"><span>UN R149, 00 series</span><b>Class C</b></div>
+        <div class="field"><label for="optClass">Passing-beam class (UN R149, 00 series) <span class="hint" tabindex="0" data-tip="Class C: asymmetric passing beam (Table 9). Classes CS and DS: symmetrical passing beam (Table 35); DS has higher minima at points 2, 5 and 6. Auto picks C for a beam with a kink and CS for a flat cut-off.">?</span></label>
+          <select id="optClass"><option value="auto">Auto (C with kink, CS if flat)</option><option value="C">Class C · asymmetric</option><option value="CS">Class CS · symmetrical</option><option value="DS">Class DS · symmetrical</option></select></div>
         <div class="field"><label for="optTraffic">Traffic side</label>
           <select id="optTraffic"><option value="auto">Detect from cut-off shape</option><option value="RHT">Right-hand traffic</option><option value="LHT">Left-hand traffic</option></select></div>
       </div>
@@ -446,13 +448,14 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
       <div class="panel-head"><div><h2>File and method</h2></div></div>
       <div class="kv" id="fileKv"></div>
       <ul class="notes" id="methodNotes">
-        <li>Regulation basis: UN R149, 00 series (original version) as amended by its supplements. Photometric values from Table 9 (Class C), Imax segment and cut-off position from Table 10, Zone III from Table 11, cut-off quality and instrumental aiming from Annex 6. Verify limits against your controlled copy of the 00 series, Supplement 6 before using the result for approval work.</li>
+        <li>Regulation basis: UN R149, 00 series (original version) as amended by its supplements. Photometric values for Class C from Table 9, Imax segment and cut-off position from Table 10 and Zone III from Table 11; for the symmetrical Classes CS and DS from Table 35 (with Zones 1 and 2); cut-off quality and instrumental aiming from Annex 6. Verify limits against your controlled copy of the 00 series, Supplement 6 before using the result for approval work.</li>
         <li>Angles: Type A/B files are read as screen angles (H right, V up). Type C files are mapped H = C-plane angle, V = γ − 90°. Use the axis options if the file uses another sign convention.</li>
         <li>Gradient G = log I(β) − log I(β + 0.1°), evaluated on a 0.01° resampled scan of the bilinear-interpolated file. The cut-off is the inflection point (maximum G). Only transitions with a bright zone below are counted.</li>
         <li>Minimum sharpness uses the better of the 10 m/Ø10 mm and 25 m/Ø30 mm detector apertures; maximum sharpness uses 25 m/Ø30 mm, as in Annex 6 §2. Simulation files on grids coarser than 0.05° give a biased G.</li>
         <li>Horizontal aim. Geometric kink: intersection of the horizontal part with a straight-line fit of the inclined part. Method (a): inflection on a horizontal scan at 0.2°D (after vertical aim) placed on V-V. Method (b): inflections on vertical scans at 1R, 2R, 3R, line through them, intersection with the cut-off line B placed on V-V. Methods (a) and (b) are what the applicant declares for instrumental aiming; for a 15° cut-off they put the geometric kink left of V-V.</li>
-        <li>One lamp is evaluated with its full intensity. Footnote minima "each side ≥ 50 cd" are applied to this lamp. S50/S100 sums are evaluated without position lamps. LHT beams are mirrored and checked with L and R swapped.</li>
-        <li>Not covered in this version: other passing-beam classes (V, E, W and A/B/D), bending mode (Table 9 Part B), symmetric passing beams (Classes AS–ES), colour and stability tests.</li>
+        <li>One lamp is evaluated with its full intensity. Footnote minima "each side ≥ 50 cd" (Class C) and the full point-2 minimum (CS/DS) are applied to this lamp. S50/S100 sums are evaluated without position lamps. LHT beams are mirrored and checked with L and R swapped.</li>
+        <li>Classes CS and DS (symmetrical passing beam): the cut-off inflection on V-V is aimed to 0.57°D and the beam keeps its horizontal position from the file. Cut-off requirements from Annex 6 for symmetrical beams: one cut-off, G ≥ 0.08 at 2.5°L and 2.5°R, cut-off between 3°L and 3°R within ±0.3° of the aimed line, inflections at 3°L and 3°R within 0.3° of nominal. The minimum sums for points 8+9+10 (150 cd) and 11+12+13 (300 cd) and the 0.25° per-point tolerance are not legible in the published 00-series text and were taken from the later R149 text; check them against your copy.</li>
+        <li>Not covered in this version: other passing-beam classes (V, E, W, A/B/D, AS, BS, ES), bending mode (Table 9 Part B), colour and stability tests.</li>
       </ul>
     </section>
     <footer class="app-foot">
@@ -707,6 +710,7 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
   /* Table 11 (Zone III). Values in cd. For LHT, L and R are swapped.    */
   /* ------------------------------------------------------------------ */
   const ZONE_IIIa = [[-8, 1], [-8, 4], [8, 4], [8, 2], [6, 1.5], [1.5, 1.5], [0, 0], [-4, 0]];
+  const ZONE_1 = [[-8, 1], [-8, 4], [8, 4], [8, 1], [4, 0], [1, 0], [0, 0.6], [-1, 0], [-4, 0]]; // symmetrical beams
 
   function classTable(cls) {
     // helper constructors
@@ -739,10 +743,41 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
         RG('Imax', -0.5, 3, -1.72, -0.3, 16900, 44100, 'Segment Imax 0.5L–3R / 0.3D–1.72D')
       ]
     };
+    // Symmetrical passing beam, Classes CS and DS (UN R149 00 series, Table 35)
+    const posS = 'position lamp(s) may be switched on (applicant\'s choice)';
+    const sym = (ds) => [
+      ZN('Zone 1', ZONE_1, 900),
+      RG('Zone 2', -8, 8, 4.05, 15, null, 700, 'above 4°U up to 15°U, 8°L…8°R'),
+      P('Point 8 (4°U 8°L)', -8, 4, null, 700),
+      P('Point 9 (4°U V)', 0, 4, null, 700),
+      P('Point 10 (4°U 8°R)', 8, 4, null, 700),
+      S('Points 8+9+10', [[-8, 4], [0, 4], [8, 4]], 150, posS),
+      P('Point 11 (2°U 4°L)', -4, 2, null, 900),
+      P('Point 12 (2°U V)', 0, 2, null, 900),
+      P('Point 13 (2°U 4°R)', 4, 2, null, 900),
+      S('Points 11+12+13', [[-4, 2], [0, 2], [4, 2]], 300, posS),
+      P('Point 4 (1.5°L)', -1.5, 0.5, null, 900),
+      P('Point 4 (1.5°R)', 1.5, 0.5, null, 900),
+      P('Point 14 (8°L)', -8, 0, 50, null, posS),
+      P('Point 14 (8°R)', 8, 0, 50, null, posS),
+      P('Point 15 (4°L)', -4, 0, 100, 900, posS),
+      P('Point 15 (4°R)', 4, 0, 100, 900, posS),
+      P('Point 7 (HV)', 0, 0, null, 1700),
+      P('Point 1 (3.5°R)', 3.5, -0.86, 2000, 13750),
+      P('Point 2 (V)', 0, -0.86, ds ? 4900 : 2450, null, 'matched pair: each lamp at least 50 % of the minimum'),
+      P('Point 3 (3.5°L)', -3.5, -0.86, 2000, 13750),
+      HS('Line 1', -2, -9, 9, 1350, null, 'all', 'every point 9°L…9°R'),
+      P('Point 5 (15°L)', -15, -2, ds ? 1100 : 550, null),
+      P('Point 5 (15°R)', 15, -2, ds ? 1100 : 550, null),
+      P('Point 6 (20°L)', -20, -4, ds ? 300 : 150, null),
+      P('Point 6 (20°R)', 20, -4, ds ? 300 : 150, null)
+    ];
+    t.CS = sym(false); t.DS = sym(true);
     return t[cls];
   }
-  // allowed aimed position of the horizontal cut-off (Table 10, item B), degrees (negative = down)
-  const CUTOFF_RANGE = { C: [-0.57, -0.57] };
+  // allowed aimed position of the horizontal cut-off, degrees (negative = down)
+  const CUTOFF_RANGE = { C: [-0.57, -0.57], CS: [-0.57, -0.57], DS: [-0.57, -0.57] };
+  const SYM_CLASSES = ['CS', 'DS'];
 
   function pointInPoly(x, y, poly) {
     let inside = false;
@@ -806,7 +841,7 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
       case 'hseg': return fv(el.v) + ', ' + fh(el.h1) + ' … ' + fh(el.h2);
       case 'rect': return fv(el.v2) + '…' + fv(el.v1) + ', ' + fh(el.h1) + '…' + fh(el.h2);
       case 'below': return fv(el.v) + ' and below, ' + fh(el.h1) + '…' + fh(el.h2);
-      case 'zone': return 'polygon (Table 11)';
+      case 'zone': return el.id === 'Zone 1' ? 'polygon (Table 35)' : 'polygon (Table 11)';
     }
   }
 
@@ -880,11 +915,14 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
       else type = 'sym';
     } else { type = 'asym'; traffic = sharpL ? 'RHT' : 'LHT'; }
     const detectedTraffic = traffic;
+    let cls = o.cls || 'auto';
+    if (cls === 'auto') cls = type === 'sym' ? 'CS' : 'C';
+    const symCls = SYM_CLASSES.includes(cls);
     if (o.traffic !== 'auto' && type !== 'none') { if (type === 'asym' || o.forceAsym) traffic = o.traffic; }
     if (o.traffic !== 'auto' && type === 'asym' && detectedTraffic && o.traffic !== detectedTraffic) warnings.push('Traffic side forced to ' + o.traffic + ' although the cut-off shape indicates ' + detectedTraffic + '.');
 
     const res = {
-      type, traffic, detectedTraffic, rawLine, vLeftRaw: vLeft, vRightRaw: vRight, deltaRaw: delta, warnings,
+      type, traffic, detectedTraffic, cls, symClass: symCls, rawLine, vLeftRaw: vLeft, vRightRaw: vRight, deltaRaw: delta, warnings,
       scansRaw: { L: sL, R: sR }, floorCd, options: o, grid: { H0: g.H[0], H1: g.H[g.nH - 1], V0: vMin, V1: vMax, hRes: g.hRes, vRes: g.vRes, nH: g.nH, nV: g.nV, Imax: g.Imax, ImaxAt: g.ImaxAt }
     };
     res.fluxRaw = flux(g, 0);
@@ -893,15 +931,26 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
       return res;
     }
 
-    // 2. canonical frame (RHT): mirror LHT files
-    const m = traffic === 'LHT' ? -1 : 1;
+    if (symCls && type === 'asym') warnings.push('Class ' + cls + ' is for symmetrical passing beams, but this cut-off has a kink (' + traffic + '). It was checked with the symmetrical procedure anyway.');
+    if (symCls && vMax < 15) warnings.push('V range ends at ' + vMax + '°U. Zone 2 of Class ' + cls + ' reaches 15°U; the part outside the file is treated as 0 cd.');
+    res.hasKink = type === 'asym' && !symCls;
+
+    // 2. canonical frame (RHT): mirror LHT files (not for symmetrical classes)
+    const m = traffic === 'LHT' && !symCls ? -1 : 1;
     res.mirror = m;
     const fc = transformed(fRaw, m, 0, 0);
     const fcNoAp = transformed(f0, m, 0, 0);
 
     // horizontal-part scans at 1.5/2.5/3.5 (L in canonical frame). For symmetric beams also R side.
     const s25 = vscan(fc, -2.5, win[0], win[1], floorCd), s15 = vscan(fc, -1.5, win[0], win[1], floorCd), s35 = vscan(fc, -3.5, win[0], win[1], floorCd);
-    const vCut = s25.v;
+    let vCut = s25.v;
+    res.cutRef = (m === -1 ? '2.5°R' : '2.5°L');
+    if (symCls) { // symmetrical procedure: inflection on V-V is the aiming reference
+      const sV = vscan(fc, 0, win[0], win[1], floorCd), s3L = vscan(fc, -3, win[0], win[1], floorCd), s3R = vscan(fc, 3, win[0], win[1], floorCd);
+      res.scanV = sV; res.scan3L = s3L; res.scan3R = s3R;
+      if (isFinite(sV.v) && sV.G >= 0.05) { vCut = sV.v; res.cutRef = 'V-V'; }
+      else { warnings.push('No clear cut-off on V-V; the 2.5°L scan was used for vertical aim.'); }
+    }
     res.scan25 = s25; res.scan15 = s15; res.scan35 = s35;
     const infl = [s15.v, s25.v, s35.v];
     res.linearity = Math.max(...infl) - Math.min(...infl);
@@ -912,9 +961,12 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
     res.G_25m = vscan(transformed(withAperture(f0, APERTURE['25m']), m, 0, 0), sideX, win[0], win[1], floorCd, 0.01).G;
     res.G_grid = vscan(fcNoAp, sideX, win[0], win[1], floorCd, 0.01).G;
     res.nCutoffs = s25.peaks.length;
-    if (type === 'sym') {
+    if (type === 'sym' || symCls) {
       const s25r = vscan(fc, 2.5, win[0], win[1], floorCd);
       res.scan25R = s25r; res.G25R = s25r.G;
+      res.G_10mR = vscan(transformed(withAperture(f0, APERTURE['10m']), m, 0, 0), 2.5, win[0], win[1], floorCd, 0.01).G;
+      res.G_25mR = vscan(transformed(withAperture(f0, APERTURE['25m']), m, 0, 0), 2.5, win[0], win[1], floorCd, 0.01).G;
+      res.nCutoffs = Math.max(res.nCutoffs, s25r.peaks.length);
     }
 
     // 3. vertical aim
@@ -926,9 +978,9 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
     const cLine = cutoffLine(fc, -10, 10, 0.1, win, floorCd);
     res.cLine = cLine;
 
-    // 4. kink (asymmetric only)
+    // 4. kink (asymmetric classes only)
     let hk = null;
-    if (type === 'asym') {
+    if (res.hasKink) {
       const leftPts = cLine.filter(p => p.h >= -4 && p.h <= -1.5 && p.G >= 0.08);
       const vL = median(leftPts.map(p => p.v));
       const rightPts = cLine.filter(p => p.h >= 1.5 && p.h <= 5 && p.G >= 0.08);
@@ -1007,9 +1059,35 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
     const vBottom = Math.max(vMin + dv, -30);
 
     // 5. regulation check
-    if (type === 'asym') {
-      res.check = regulationCheck(fa, o.cls, vBottom);
-      const rng = CUTOFF_RANGE[o.cls];
+    const robustGrid = () => {
+      const dvs = [-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3], dhs = [-0.5, -0.25, 0, 0.25, 0.5];
+      return { dvs, dhs, grid: dvs.map(a => dhs.map(b => {
+        const fx = transformed(fcNoAp, 1, dh + b, dv + a);
+        return regulationCheck(fx, cls, vBottom).filter(x => !x.pass).map(x => x.id);
+      })) };
+    };
+    if (symCls) {
+      res.check = regulationCheck(fa, cls, vBottom);
+      res.zonePoly = ZONE_1; res.zoneName = 'Zone 1';
+      const cq = [];
+      cq.push({ id: 'Number of cut-offs', value: res.nCutoffs, limit: '1', pass: res.nCutoffs <= 1, ref: 'Annex 6 (symmetrical)' });
+      const gL = Math.max(res.G_10m, res.G_25m), gR = Math.max(res.G_10mR, res.G_25mR);
+      cq.push({ id: 'Sharpness G at 2.5°L (best of 10 m/Ø10 mm, 25 m/Ø30 mm)', value: gL, limit: '≥ 0.08', pass: gL >= 0.08, ref: 'Annex 6 (symmetrical)' });
+      cq.push({ id: 'Sharpness G at 2.5°R (best of 10 m/Ø10 mm, 25 m/Ø30 mm)', value: gR, limit: '≥ 0.08', pass: gR >= 0.08, ref: 'Annex 6 (symmetrical)' });
+      const band = cLine.filter(p => Math.abs(p.h) <= 3 + 1e-9 && p.G >= 0.08 && isFinite(p.v));
+      const dev = band.length ? Math.max(...band.map(p => Math.abs(p.v + dv - o.target))) : NaN;
+      res.symBand = { dev, n: band.length };
+      cq.push({ id: 'Straightness 3°L…3°R (max deviation from aimed line)', value: dev, unit: 'deg', limit: '≤ 0.30°', pass: dev <= 0.3, ref: 'Annex 6 (symmetrical)' });
+      const d3L = Math.abs(res.scan3L.v + dv - o.target), d3R = Math.abs(res.scan3R.v + dv - o.target);
+      cq.push({ id: 'Inflection at 3°L from nominal', value: d3L, unit: 'deg', limit: '≤ 0.30°', pass: d3L <= 0.3, ref: 'Annex 6 (symmetrical)' });
+      cq.push({ id: 'Inflection at 3°R from nominal', value: d3R, unit: 'deg', limit: '≤ 0.30°', pass: d3R <= 0.3, ref: 'Annex 6 (symmetrical)' });
+      cq.push({ id: 'Aimed cut-off position on V-V (Class ' + cls + ')', value: res.cutoffAimed, limit: '0.57°D', pass: Math.abs(res.cutoffAimed - CUTOFF_RANGE[cls][0]) <= 0.005, ref: 'Annex 6 (symmetrical)' });
+      res.cutoffChecks = cq;
+      res.robust = robustGrid();
+    } else if (type === 'asym') {
+      res.check = regulationCheck(fa, cls, vBottom);
+      res.zonePoly = ZONE_IIIa; res.zoneName = 'Zone III';
+      const rng = CUTOFF_RANGE[cls];
       const cq = [];
       cq.push({ id: 'Number of cut-offs', value: res.nCutoffs, limit: '1', pass: res.nCutoffs <= 1, ref: 'Annex 6 §2.1' });
       const sd = traffic === 'LHT' ? 'R' : 'L', gMin = Math.max(res.G_10m, res.G_25m);
@@ -1019,17 +1097,11 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
       if (o.hMethod === '02D') cq.push({ id: 'Kink gradient on 0.2D line', value: res.kinkA.G, limit: '≥ 0.08', pass: res.kinkA.G >= 0.08, ref: 'Annex 6 §3.2 (a)' });
       if (o.hMethod === '3line') cq.push({ id: 'Kink gradient on 1R/2R/3R lines (min)', value: res.kinkB.G, limit: '≥ 0.08', pass: res.kinkB.G >= 0.08, ref: 'Annex 6 §3.2 (b)' });
       const ca = res.cutoffAimed;
-      cq.push({ id: 'Aimed cut-off position (Class ' + o.cls + ')', value: ca, limit: rng[0] === rng[1] ? Math.abs(rng[0]) + '°D' : Math.abs(rng[1]) + '°D … ' + Math.abs(rng[0]) + '°D', pass: ca >= rng[0] - 0.005 && ca <= rng[1] + 0.005, ref: 'Table 10 B' });
+      cq.push({ id: 'Aimed cut-off position (Class ' + cls + ')', value: ca, limit: rng[0] === rng[1] ? Math.abs(rng[0]) + '°D' : Math.abs(rng[1]) + '°D … ' + Math.abs(rng[0]) + '°D', pass: ca >= rng[0] - 0.005 && ca <= rng[1] + 0.005, ref: 'Table 10 B' });
       if (o.aimMode !== 'full') cq.push({ id: 'Kink horizontal position from V-V', value: hk + dh, limit: '|x| ≤ 0.5°', pass: Math.abs(hk + dh) <= 0.5, ref: 'visual aim tolerance (info)' });
       res.cutoffChecks = cq;
 
-      // aim robustness
-      const dvs = [-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3], dhs = [-0.5, -0.25, 0, 0.25, 0.5];
-      res.robust = { dvs, dhs, grid: dvs.map(a => dhs.map(b => {
-        const fx = transformed(fcNoAp, 1, dh + b, dv + a);
-        const r = regulationCheck(fx, o.cls, vBottom);
-        return r.filter(x => !x.pass).map(x => x.id);
-      })) };
+      res.robust = robustGrid();
     }
 
     // 6. extra info
@@ -1077,11 +1149,11 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
     // human-readable type
     if (type === 'asym') res.typeLabel = 'Asymmetric passing beam — ' + (traffic === 'RHT' ? 'right-hand traffic (RHT)' : 'left-hand traffic (LHT)');
     else res.typeLabel = 'Symmetric passing beam (flat cut-off, no kink)';
-    if (type === 'sym') res.verdict = 'Symmetric beam: cut-off analysis done; the R149 asymmetric tables (Classes C/V/E/W) do not apply. Symmetric classes (AS…ES) are not checked in this version.';
+    if (type === 'sym' && !symCls) res.verdict = 'Symmetric beam: the Class C table is for asymmetric passing beams. Choose Class CS or DS to check it as a symmetrical passing beam.';
     return res;
   }
 
-  const api = { parseIES, buildGrid, makeSampler, transformed, vscan, hscan, analyse, classTable, regulationCheck, CUTOFF_RANGE, ZONE_IIIa, flux, APERTURE };
+  const api = { parseIES, buildGrid, makeSampler, transformed, vscan, hscan, analyse, classTable, regulationCheck, CUTOFF_RANGE, ZONE_IIIa, ZONE_1, SYM_CLASSES, flux, APERTURE };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.BCCore = api;
 })(typeof window !== 'undefined' ? window : this);
 
@@ -1090,21 +1162,22 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
 (function () {
 'use strict';
   /* Synthetic example beam (clearly labelled in UI): RHT, 15° kink, cut-off at 0.25°D raw, kink 0.4°R raw */
+  const SYM_EXAMPLE = { hk: 0, step: 0, hotH: 0, wL: 4.2, wR: 4.2, imax: 11500, label: 'Built-in synthetic example (symmetrical, flat cut-off). Not a real lamp.' };
   function syntheticExample(p) {
-    p = Object.assign({ vcut: -0.25, hk: 0.4, slope: 15, step: 0.75, w: 0.13, imax: 33000 }, p || {});
+    p = Object.assign({ vcut: -0.25, hk: 0.4, slope: 15, step: 0.75, w: 0.13, imax: 33000, hotH: 1.8, wL: 3.6, wR: 6.5, label: 'Built-in synthetic example (RHT, 15° kink). Not a real lamp.' }, p || {});
     const H = [], V = [];
     for (let h = -45; h <= 45.0001; h += 0.2) H.push(+h.toFixed(2));
-    for (let v = -15; v <= 12.0001; v += 0.05) V.push(+v.toFixed(2));
+    for (let v = -15; v <= 16.0001; v += 0.05) V.push(+v.toFixed(2));
     const nH = H.length, nV = V.length, I = new Float64Array(nH * nV);
     const tn = Math.tan(p.slope * Math.PI / 180);
     let Imax = 0, at = null;
     for (let j = 0; j < nH; j++) {
       const h = H[j];
       const c = p.vcut + Math.min(Math.max(tn * (h - p.hk), 0), p.step);
-      const wh = h < 1.8 ? 3.6 : 6.5;
+      const wh = h < p.hotH ? p.wL : p.wR;
       for (let i = 0; i < nV; i++) {
         const v = V[i];
-        const base = p.imax * Math.exp(-(((h - 1.8) / wh) ** 2) - (((v - (p.vcut - 0.75)) / 1.15) ** 2))
+        const base = p.imax * Math.exp(-(((h - p.hotH) / wh) ** 2) - (((v - (p.vcut - 0.75)) / 1.15) ** 2))
           + 7500 * Math.exp(-((h / 20) ** 2) - (((v - (p.vcut - 2.2)) / 3.2) ** 2))
           + 1500 * Math.exp(-((h / 38) ** 2) - (((v - (p.vcut - 5)) / 6) ** 2));
         const S = 1 / (1 + Math.exp((v - c) / p.w));
@@ -1113,7 +1186,7 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
       }
     }
     const res = (a) => +(a[1] - a[0]).toFixed(4);
-    return { H: Float64Array.from(H), V: Float64Array.from(V), I, nH, nV, Imax, ImaxAt: at, hRes: res(H), vRes: res(V), notes: ['Built-in synthetic example (RHT, 15° kink). Not a real lamp.'] };
+    return { H: Float64Array.from(H), V: Float64Array.from(V), I, nH, nV, Imax, ImaxAt: at, hRes: res(H), vRes: res(V), notes: [p.label] };
   }
 
 
@@ -1130,7 +1203,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;
 
 function opts() {
   return {
-    cls: 'C', traffic: $('optTraffic').value,
+    cls: $('optClass').value, traffic: $('optTraffic').value,
     aimMode: $('optAim').value, hMethod: $('optHMethod').value,
     target: -Math.abs(parseFloat($('optTarget').value) || 0.57),
     mountH: Math.max(0.1, parseFloat($('optMount').value) || 0.65),
@@ -1154,13 +1227,14 @@ function loadText(text, name) {
     } catch (e) { busy(false); showError(e.message); }
   }, 20);
 }
-function loadExample() {
-  state.ies = null; state.isExample = true; state.name = 'Built-in example: synthetic RHT low beam, 15° kink (not a real lamp)';
+function loadExample(kind) {
+  state.ies = null; state.isExample = true; state.exampleKind = kind === 'sym' ? 'sym' : 'rht';
+  state.name = state.exampleKind === 'sym' ? 'Built-in example: synthetic symmetrical low beam, flat cut-off (not a real lamp)' : 'Built-in example: synthetic RHT low beam, 15° kink (not a real lamp)';
   buildAndRun();
 }
 function buildAndRun() {
   try {
-    if (state.isExample) state.grid = syntheticExample();
+    if (state.isExample) state.grid = state.exampleKind === 'sym' ? syntheticExample(SYM_EXAMPLE) : syntheticExample();
     else state.grid = C.buildGrid(state.ies, { flipV: $('optFlipV').checked, flipH: $('optFlipH').checked });
     run();
   } catch (e) { busy(false); showError(e.message); }
@@ -1193,9 +1267,10 @@ drop.addEventListener('drop', (e) => { const f = e.dataTransfer.files[0]; if (f)
 document.addEventListener('dragover', (e) => e.preventDefault());
 document.addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) readFile(f); });
 function readFile(f) { const r = new FileReader(); r.onload = () => loadText(r.result, f.name); r.onerror = () => showError('The browser could not read the file.'); r.readAsText(f); }
-$('btnExample').addEventListener('click', loadExample);
+$('btnExample').addEventListener('click', () => loadExample('rht'));
+$('btnExampleSym').addEventListener('click', () => loadExample('sym'));
 ['optFlipV', 'optFlipH'].forEach(id => $(id).addEventListener('change', () => { if (!state.isExample && state.ies) buildAndRun(); }));
-['optTraffic', 'optAim', 'optHMethod', 'optTarget', 'optMount', 'optDv', 'optDh', 'optDet'].forEach(id => $(id).addEventListener('change', () => { if (state.grid) run(); }));
+['optClass', 'optTraffic', 'optAim', 'optHMethod', 'optTarget', 'optMount', 'optDv', 'optDh', 'optDet'].forEach(id => $(id).addEventListener('change', () => { if (state.grid) run(); }));
 $('viewAimed').addEventListener('click', () => { state.view = 'aimed'; $('viewAimed').setAttribute('aria-pressed', 'true'); $('viewRaw').setAttribute('aria-pressed', 'false'); drawMap(); });
 $('viewRaw').addEventListener('click', () => { state.view = 'raw'; $('viewRaw').setAttribute('aria-pressed', 'true'); $('viewAimed').setAttribute('aria-pressed', 'false'); drawMap(); });
 window.addEventListener('resize', () => { if (state.res) { clearTimeout(window.__rz); window.__rz = setTimeout(drawCharts, 150); } });
@@ -1264,9 +1339,9 @@ function jumpToRow(id) {
 
 function renderVerdict() {
   const r = state.res, el = $('verdict');
-  if (r.type !== 'asym') {
+  if (!r.check) {
     el.className = 'verdict na';
-    el.innerHTML = '<div class="big">' + (r.type === 'none' ? 'No cut-off' : 'Symmetric beam') + '</div><div class="what">' + (r.type === 'none' ? 'The file has no distinct cut-off. It looks like a driving beam, so the low-beam check does not apply.' : 'Flat cut-off without kink. The R149 Class C table is for asymmetric passing beams, so only the cut-off analysis is shown.') + '</div>';
+    el.innerHTML = '<div class="big">' + (r.type === 'none' ? 'No cut-off' : 'Not checked') + '</div><div class="what">' + (r.type === 'none' ? 'The file has no distinct cut-off. It looks like a driving beam, so the low-beam check does not apply.' : 'Symmetric beam with a flat cut-off. Class C is for asymmetric passing beams; choose Class CS or DS (or Auto) to check it as a symmetrical passing beam.') + '</div>';
     return;
   }
   const lr = r._lr;
@@ -1276,7 +1351,7 @@ function renderVerdict() {
   el.className = 'verdict ' + (nf ? 'bad' : 'ok');
   const lim = (c) => c.max != null && c.value > c.max ? '> ' + fmt(c.max) : c.min != null ? '< ' + fmt(c.min) : '';
   el.innerHTML = '<div class="big">' + (nf ? 'Fails' : 'Passes') + '</div>' +
-    '<div class="what"><b>UN R149 Class C</b>, ' + (r.traffic === 'RHT' ? 'right-hand traffic' : 'left-hand traffic') + '. ' + (nf ? nf + ' of ' + n + ' items fail' : 'All ' + n + ' items pass') + ' after aiming the cut-off to ' + angV(r.cutoffAimed) + (r.options.aimMode === 'full' ? ' and the kink to V-V' : '') + '.</div>' +
+    '<div class="what"><b>UN R149 Class ' + r.cls + '</b>, ' + (r.symClass ? 'symmetrical passing beam' : (r.traffic === 'RHT' ? 'right-hand traffic' : 'left-hand traffic')) + '. ' + (nf ? nf + ' of ' + n + ' items fail' : 'All ' + n + ' items pass') + ' after aiming the cut-off to ' + angV(r.cutoffAimed) + (r.symClass ? ' on V-V' : (r.options.aimMode === 'full' ? ' and the kink to V-V' : '')) + '.</div>' +
     (nf ? '<div class="fails">' +
       fc.map(x => '<button type="button" data-row="cut-row-' + x.i + '"><b>' + esc(x.c.id.replace(/ \(.*\)$/, '').replace(/ —.*$/, '')) + '</b><span>' + esc(typeof x.c.value === 'number' ? fmt(x.c.value, 3) : x.c.value) + ' vs ' + esc(x.c.limit) + '</span></button>').join('') +
       fr.map(x => '<button type="button" data-row="reg-row-' + x.i + '"><b>' + esc(lr(x.c.id)) + '</b><span>' + fmt(x.c.value) + ' cd ' + esc(lim(x.c)) + '</span></button>').join('') +
@@ -1285,11 +1360,10 @@ function renderVerdict() {
 }
 function renderFileCard() {
   const g = state.grid;
-  $('fileName').textContent = state.isExample ? 'Synthetic example (RHT, 15° kink)' : state.name;
+  $('fileName').textContent = state.isExample ? (state.exampleKind === 'sym' ? 'Synthetic example (symmetrical, flat cut-off)' : 'Synthetic example (RHT, 15° kink)') : state.name;
   const ty = state.ies ? ({ 1: 'Type C', 2: 'Type B', 3: 'Type A' }[state.ies.hdr.photType] || 'Type ?') : 'generated';
   $('fileMeta').textContent = g.nH + ' × ' + g.nV + ' points · ' + fmt(g.hRes, 2) + '° / ' + fmt(g.vRes, 2) + '° · ' + ty;
   $('exampleNote').hidden = !state.isExample;
-  $('btnExample').textContent = state.isExample ? 'Reload example' : 'Load example';
   setOnlyFail(state.onlyFail);
 }
 
@@ -1303,7 +1377,7 @@ function render() {
   // banners
   const warn = [].concat(state.isExample ? [] : (state.grid.notes || []), r.warnings || []);
   let b = '';
-  if (r.verdict && r.type !== 'asym') b += '<div class="banner' + (r.type === 'none' ? ' bad' : '') + '">' + esc(r.verdict) + '</div>';
+  if (r.verdict && !r.check) b += '<div class="banner' + (r.type === 'none' ? ' bad' : '') + '">' + esc(r.verdict) + '</div>';
   if (warn.length) b += '<div class="banner"><strong>Notes on this file</strong><ul>' + warn.map(w => '<li>' + esc(w) + '</li>').join('') + '</ul></div>';
   $('banners').innerHTML = b;
 
@@ -1314,18 +1388,22 @@ function render() {
     T.push(tile('Imax', fmtCd(r.grid.Imax), 'at ' + angH(r.grid.ImaxAt.h) + ', ' + angV(r.grid.ImaxAt.v), ''));
     T.push(tile('Luminous flux', fmt(r.fluxRaw.total, 0) + ' lm', 'integrated over the file grid', ''));
   } else {
-    const asym = r.type === 'asym';
+    const asym = r.type === 'asym', kinkT = !!r.hasKink;
     T.push(tile('Beam type', asym ? 'Asymmetric · ' + r.traffic : 'Symmetric', asym ? (r.traffic === 'RHT' ? 'Right-hand traffic' : 'Left-hand traffic') + (o.traffic !== 'auto' ? ' (set manually)' : ' (detected)') : 'Flat cut-off, no kink', ''));
-    if (asym) T.push(tile('Kink', (r.traffic === 'RHT' ? 'Rises to the right' : 'Rises to the left'), r.kinkShape + ', slope ' + fmt(r.kinkSlope, 1) + '°, step ' + fmt(r.stepHeight, 2) + '°', ''));
-    T.push(tile('Horizontal cut-off', angV(r.aim.cutoffRaw), 'in file, at 2.5°' + (m === -1 ? 'R' : 'L') + ' · aimed ' + angV(r.cutoffAimed), ''));
-    T.push(tile('Cut-off gradient G', fmt(r.G_grid, 3), '10 m: ' + fmt(r.G_10m, 3) + ' · 25 m: ' + fmt(r.G_25m, 3) + ' · min 0.13', r.G_10m >= 0.13 || r.G_25m >= 0.13 ? 'ok' : 'bad'));
-    if (asym) T.push(tile('Kink position', angH(r.aim.kinkRaw), 'in file (' + methodName(o.hMethod) + ')', ''));
+    if (kinkT) T.push(tile('Kink', (r.traffic === 'RHT' ? 'Rises to the right' : 'Rises to the left'), r.kinkShape + ', slope ' + fmt(r.kinkSlope, 1) + '°, step ' + fmt(r.stepHeight, 2) + '°', ''));
+    T.push(tile('Horizontal cut-off', angV(r.aim.cutoffRaw), 'in file, at ' + r.cutRef + ' · aimed ' + angV(r.cutoffAimed), ''));
+    if (r.symClass) {
+      const gL = Math.max(r.G_10m, r.G_25m), gR = Math.max(r.G_10mR, r.G_25mR);
+      T.push(tile('Cut-off gradient G', fmt(gL, 3) + ' / ' + fmt(gR, 3), 'at 2.5°L / 2.5°R, best of 10 m and 25 m · min 0.08', Math.min(gL, gR) >= 0.08 ? 'ok' : 'bad'));
+    } else T.push(tile('Cut-off gradient G', fmt(r.G_grid, 3), '10 m: ' + fmt(r.G_10m, 3) + ' · 25 m: ' + fmt(r.G_25m, 3) + ' · min 0.13', r.G_10m >= 0.13 || r.G_25m >= 0.13 ? 'ok' : 'bad'));
+    if (kinkT) T.push(tile('Kink position', angH(r.aim.kinkRaw), 'in file (' + methodName(o.hMethod) + ')', ''));
   }
   $('tiles').innerHTML = T.join('');
 
   renderCutTable(); renderReg(); renderRobust(); renderExtra(); renderFile(); renderVerdict(); renderFileCard();
-  $('regPanel').classList.toggle('hidden', r.type !== 'asym');
-  $('robPanel').classList.toggle('hidden', r.type !== 'asym');
+  $('optHMethod').disabled = !!r.symClass; $('optHMethod').title = r.symClass ? 'Not used for symmetrical classes: the beam keeps its horizontal position.' : '';
+  $('regPanel').classList.toggle('hidden', !r.check);
+  $('robPanel').classList.toggle('hidden', !r.check);
   drawCharts();
 }
 function tile(k, v, s, cls) { return '<div class="tile' + (cls ? ' verdict-' + cls : '') + '"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div><div class="s">' + esc(s) + '</div></div>'; }
@@ -1336,7 +1414,7 @@ function renderCutTable() {
   const r = state.res, t = $('tblCut');
   if (r.type === 'none') { t.innerHTML = ''; $('kinkKv').innerHTML = ''; return; }
   let rows = [];
-  if (r.type === 'asym') rows = r.cutoffChecks.map(c => ({ id: c.id, value: typeof c.value === 'number' ? (c.id.startsWith('Aimed') ? angV(c.value) : c.id.startsWith('Kink horizontal') ? angH(c.value) : c.id.startsWith('Number') ? String(c.value) : (c.id.startsWith('Linearity') ? fmt(c.value, 3) + '°' : fmt(c.value, 3))) : c.value, limit: c.limit, pass: c.pass, ref: c.ref }));
+  if (r.cutoffChecks) rows = r.cutoffChecks.map(c => ({ id: c.id, value: typeof c.value === 'number' ? (c.id.startsWith('Aimed') ? angV(c.value) : c.id.startsWith('Kink horizontal') ? angH(c.value) : c.id.startsWith('Number') ? String(c.value) : (c.unit === 'deg' || c.id.startsWith('Linearity') ? fmt(c.value, 3) + '°' : fmt(c.value, 3))) : c.value, limit: c.limit, pass: c.pass, ref: c.ref }));
   else rows = [
     { id: 'Number of cut-offs (2.5°L)', value: String(r.nCutoffs), limit: '1', pass: r.nCutoffs <= 1, ref: 'info' },
     { id: 'G at 2.5°L / 2.5°R', value: fmt(r.G25, 3) + ' / ' + fmt(r.G25R, 3), limit: '≥ 0.13', pass: null, ref: 'info' },
@@ -1347,8 +1425,9 @@ function renderCutTable() {
   const m = r.mirror || 1;
   const kv = [];
   kv.push(['Cut-off in file at 1.5° / 2.5° / 3.5°' + (m === -1 ? 'R' : 'L'), [r.scan15.v, r.scan25.v, r.scan35.v].map(v => fmt(v, 3)).join(' / ') + '°']);
-  kv.push(['Vertical aim applied', fmt(r.aim.dv, 3) + '°']);
-  if (r.type === 'asym') {
+  if (r.symClass) kv.push(['Cut-off in file at 3°L / V-V / 3°R', [r.scan3L.v, r.scanV.v, r.scan3R.v].map(v => fmt(v, 3)).join(' / ') + '°']);
+  kv.push(['Vertical aim applied', fmt(r.aim.dv, 3) + '° (reference ' + r.cutRef + ')']);
+  if (r.hasKink) {
     kv.push(['Kink, geometric (file)', angH(m * r.kinkGeom.h)]);
     kv.push(['Kink, 0.2D line method (file)', isFinite(r.kinkA.h) ? angH(m * r.kinkA.h) + ' · G ' + fmt(r.kinkA.G, 3) : 'no result']);
     kv.push(['Kink, three-line method (file)', r.kinkB.valid ? angH(m * r.kinkB.h) + ' · slope ' + fmt(r.kinkB.slopeDeg, 1) + '°' : 'not applicable']);
@@ -1357,15 +1436,16 @@ function renderCutTable() {
     kv.push(['Horizontal aim applied', fmt(m * r.aim.dh, 3) + '°']);
   }
   $('kinkKv').innerHTML = kv.map(([a, b]) => '<div><span>' + esc(a) + '</span><span>' + esc(b) + '</span></div>').join('');
-  if (r.type === 'asym' && !r.kinkB.valid && r.kinkB.reason) $('kinkKv').insertAdjacentHTML('beforeend', '<div><span>Three-line method</span><span>' + esc(r.kinkB.reason) + '</span></div>');
+  if (r.hasKink && !r.kinkB.valid && r.kinkB.reason) $('kinkKv').insertAdjacentHTML('beforeend', '<div><span>Three-line method</span><span>' + esc(r.kinkB.reason) + '</span></div>');
 }
 
 function renderReg() {
   const r = state.res, o = r.options;
-  if (r.type !== 'asym') { $('tblReg').innerHTML = ''; return; }
+  if (!r.check) { $('tblReg').innerHTML = ''; return; }
   const lr = r._lr;
-  $('regTitle').textContent = 'Photometric check, UN R149 Class ' + o.cls;
-  $('regSub').textContent = 'Table 9 values for ' + (r.traffic === 'RHT' ? 'right-hand traffic' : 'left-hand traffic (L and R swapped)') + '. Aimed: cut-off ' + angV(r.cutoffAimed) + ', kink ' + (o.aimMode === 'full' ? 'on V-V' : 'as in file') + '.';
+  $('regTitle').textContent = 'Photometric check, UN R149 Class ' + r.cls;
+  if (r.symClass) $('regSub').textContent = 'Table 35 values, symmetrical passing beam. Aimed: cut-off on V-V at ' + angV(r.cutoffAimed) + ', horizontal position as in file' + (o.dhExtra ? ' plus offset' : '') + '.';
+  else $('regSub').textContent = 'Table 9 values for ' + (r.traffic === 'RHT' ? 'right-hand traffic' : 'left-hand traffic (L and R swapped)') + '. Aimed: cut-off ' + angV(r.cutoffAimed) + ', kink ' + (o.aimMode === 'full' ? 'on V-V' : 'as in file') + '.';
   const rows = r.check.map((c, ri) => {
     const lim = [c.min != null ? '≥ ' + fmt(c.min) : '', c.max != null ? '≤ ' + fmt(c.max) : ''].filter(Boolean).join('  ');
     const mg = isFinite(c.margin) ? c.margin : null;
@@ -1382,7 +1462,7 @@ function renderReg() {
 
 function renderRobust() {
   const r = state.res;
-  if (r.type !== 'asym') { $('tblRob').innerHTML = ''; return; }
+  if (!r.check) { $('tblRob').innerHTML = ''; return; }
   const m = r.mirror || 1, lr = r._lr;
   const { dvs, dhs, grid } = r.robust;
   const order = dvs.map((_, i) => i).reverse(); // top row = beam raised
@@ -1413,10 +1493,10 @@ function renderExtra() {
     ['Imax (aimed position)', fmtCd(r.ImaxAimed.I) + ' at ' + angV(r.ImaxAimed.v) + ' ' + angH(m * r.ImaxAimed.h)],
     ['Intensity at HV', fmtCd(r.IHV)],
     [lr('Max above H-H within 10°L–10°R'), fmtCd(r.maxAboveHH.I) + ' at ' + angV(r.maxAboveHH.at.v) + ' ' + angH(m * r.maxAboveHH.at.h)],
-    [lr('75R / B50L (performance to glare)'), fmt(r.ratio75RB50L, 1)],
     [lr('50V'), fmtCd(r.I50V)],
     ['Cut-off meets flat road at', r.geoReach ? fmt(r.geoReach, 1) + ' m' : '—'],
   ];
+  if (!r.symClass) kv.splice(6, 0, [lr('75R / B50L (performance to glare)'), fmt(r.ratio75RB50L, 1)]);
   r.widths.forEach(w => kv.push(['Spread on ' + w.line + ', I ≥ ' + fmt(w.thr) + ' cd', (w.left != null ? angH(m * w.left, 1) : '—') + ' … ' + (w.right != null ? angH(m * w.right, 1) : '—')]));
   const lampFlux = r.flux.total;
   kv.push(['R48 2 000 lm threshold', lampFlux > 2000 ? 'Lamp output already above 2 000 lm' : 'Refers to light-source objective flux, not lamp output']);
@@ -1516,9 +1596,9 @@ function drawMap(tgt) {
   ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1; ctx.setLineDash([]);
   ctx.beginPath(); ctx.moveTo(padL, Y(0)); ctx.lineTo(padL + pw, Y(0)); ctx.moveTo(X(0), padT); ctx.lineTo(X(0), padT + ph); ctx.stroke();
   const cutCol = css('--cut') || '#ff7eb6';
-  if (aimed && r.type === 'asym') {
-    // zone III
-    const poly = C.ZONE_IIIa;
+  if (aimed && r.check) {
+    // Zone III (Class C) or Zone 1 (Classes CS/DS)
+    const poly = r.zonePoly;
     ctx.setLineDash([5, 4]); ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath();
     poly.forEach((p, k) => { const x = X(m * p[0]), y = Y(p[1]); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
     // test elements
@@ -1527,7 +1607,7 @@ function drawMap(tgt) {
       const col = c.pass ? '#42be65' : '#ff5c66';
       const d = c.def; ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2;
       const mark = (hh, vv, label) => { ctx.beginPath(); ctx.arc(X(m * hh), Y(vv), 3.5, 0, 2 * Math.PI); ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 0.8; ctx.stroke(); if (label) { ctx.fillStyle = '#fff'; ctx.fillText(label, X(m * hh) + 5, Y(vv) - 4); } };
-      if (d.kind === 'point') mark(d.h, d.v, r._lr(d.id));
+      if (d.kind === 'point') mark(d.h, d.v, r._lr(d.id.replace(/^Points? /, '').replace(/ \(.*\)$/, '')));
       else if (d.kind === 'sum') d.pts.forEach(p => mark(p[0], p[1], ''));
       else if (d.kind === 'hseg') { ctx.beginPath(); ctx.moveTo(X(m * d.h1), Y(d.v)); ctx.lineTo(X(m * d.h2), Y(d.v)); ctx.stroke(); }
       else if (d.kind === 'rect') { ctx.lineWidth = 1.2; ctx.strokeRect(Math.min(X(m * d.h1), X(m * d.h2)), Y(d.v2), Math.abs(X(m * d.h2) - X(m * d.h1)), Y(d.v1) - Y(d.v2)); }
@@ -1540,7 +1620,7 @@ function drawMap(tgt) {
     ctx.strokeStyle = cutCol; ctx.lineWidth = 2; ctx.beginPath(); let pen = false;
     pts.forEach(p => { if (p.G >= 0.08 && isFinite(p.v)) { pen ? ctx.lineTo(X(p.h), Y(p.v)) : ctx.moveTo(X(p.h), Y(p.v)); pen = true; } else pen = false; });
     ctx.stroke();
-    if (r.type === 'asym') {
+    if (r.hasKink) {
       const kh = aimed ? m * (r.kinkH + r.aim.dh) : r.aim.kinkRaw, kv = aimed ? r.cutoffAimed : r.aim.cutoffRaw;
       ctx.fillStyle = cutCol; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2; ctx.beginPath();
       const x = X(kh), y = Y(kv); ctx.moveTo(x, y - 6); ctx.lineTo(x + 6, y); ctx.lineTo(x, y + 6); ctx.lineTo(x - 6, y); ctx.closePath(); ctx.fill(); ctx.stroke();
@@ -1562,9 +1642,9 @@ function drawMap(tgt) {
   [100, 1000, 10000, 100000].forEach(v => { const l = Math.log10(v); if (l < lo || l > hi) return; const y = padT + (hi - l) / (hi - lo) * ph; ctx.fillRect(bx + bw, y, 4, 1); ctx.fillText(v >= 1000 ? (v / 1000) + 'k' : String(v), bx + bw + 6, y + 4); });
   ctx.fillText('cd', bx, padT + ph + 15);
   if (!on) return;
-  $('mapSub').textContent = aimed ? 'Aimed beam (cut-off ' + angV(r.cutoffAimed) + (r.type === 'asym' && r.options.aimMode === 'full' ? ', kink on V-V' : '') + '), screen angles, log scale.' : 'As in file, screen angles, log scale.';
+  $('mapSub').textContent = aimed ? 'Aimed beam (cut-off ' + angV(r.cutoffAimed) + (r.hasKink && r.options.aimMode === 'full' ? ', kink on V-V' : '') + '), screen angles, log scale.' : 'As in file, screen angles, log scale.';
   const leg = ['<span><span class="sw" style="border-color:' + cutCol + '"></span>Cut-off line (G ≥ 0.08)</span>', '<span>Isolines 625 · 1 750 · 5 100 · 10 100 · 20 000 cd</span>'];
-  if (aimed && r.type === 'asym') leg.push('<span><span class="dot" style="background:#42be65"></span>Pass</span>', '<span><span class="dot" style="background:#ff5c66"></span>Fail</span>', '<span>Dashed polygon: Zone III</span>', '<span>◆ kink</span>');
+  if (aimed && r.check) leg.push('<span><span class="dot" style="background:#42be65"></span>Pass</span>', '<span><span class="dot" style="background:#ff5c66"></span>Fail</span>', '<span>Dashed polygon: ' + r.zoneName + '</span>', r.hasKink ? '<span>◆ kink</span>' : '');
   $('mapLegend').innerHTML = leg.join('');
   state.mapGeom = { X, Y, padL, padT, pw, ph, hx, vy };
 }
@@ -1658,7 +1738,7 @@ function drawCLine(tgt) {
   const ticksY = []; const st = (vmax - vmin) > 2 ? 0.5 : 0.25; for (let t = Math.ceil(vmin / st) * st; t <= vmax + 1e-9; t += st) ticksY.push(+t.toFixed(2));
   const vl = [{ x: 0, color: css('--text-2'), dash: [1, 3] }];
   const marks = [];
-  if (r.type === 'asym') {
+  if (r.hasKink) {
     vl.push({ x: r.aim.kinkRaw, color: css('--cut'), width: 1.5 });
     if (isFinite(r.kinkA.h)) vl.push({ x: m * r.kinkA.h, color: css('--accent'), dash: [5, 3] });
     if (r.kinkB.valid) vl.push({ x: m * r.kinkB.h, color: css('--ok'), dash: [5, 3] });
@@ -1676,7 +1756,7 @@ function drawCLine(tgt) {
   });
   if (tgt) return;
   let leg = '<span><span class="sw" style="border-color:' + css('--cut') + '"></span>Cut-off position</span><span><span class="sw" style="border-color:' + css('--text-2') + ';border-top-style:dashed"></span>G (right axis; shaded &lt; 0.08)</span>';
-  if (r.type === 'asym') leg += '<span><span class="sw" style="border-color:' + css('--accent') + ';border-top-style:dashed"></span>0.2D method</span>' + (r.kinkB.valid ? '<span><span class="sw" style="border-color:' + css('--ok') + ';border-top-style:dashed"></span>Three-line method</span>' : '') + '<span>Solid magenta: kink used for aim</span>';
+  if (r.hasKink) leg += '<span><span class="sw" style="border-color:' + css('--accent') + ';border-top-style:dashed"></span>0.2D method</span>' + (r.kinkB.valid ? '<span><span class="sw" style="border-color:' + css('--ok') + ';border-top-style:dashed"></span>Three-line method</span>' : '') + '<span>Solid magenta: kink used for aim</span>';
   $('clLegend').innerHTML = leg;
 }
 
@@ -1693,11 +1773,13 @@ function csvReport() {
     L.push(['Horizontal cut-off in file (deg, +up)', r.aim.cutoffRaw.toFixed(3)].map(q).join(','));
     L.push(['G grid / 10m / 25m', [r.G_grid, r.G_10m, r.G_25m].map(x => x.toFixed(3)).join(' / ')].map(q).join(','));
   }
-  if (r.type === 'asym') {
+  if (r.hasKink) {
     L.push(['Kink direction', r.kinkDir].map(q).join(','));
     L.push(['Kink in file (deg, +right) geometric / 0.2D / 3-line', [m * r.kinkGeom.h, m * r.kinkA.h, r.kinkB.valid ? m * r.kinkB.h : NaN].map(x => isFinite(x) ? x.toFixed(3) : 'n/a').join(' / ')].map(q).join(','));
     L.push(['Kink slope (deg)', r.kinkSlope.toFixed(1)].map(q).join(','));
-    L.push(['Class', o.cls].map(q).join(','));
+  }
+  if (r.check) {
+    L.push(['Class', r.cls + (r.symClass ? ' (symmetrical passing beam)' : '')].map(q).join(','));
     L.push(['Aim dv / dh (deg)', r.aim.dv.toFixed(3) + ' / ' + (m * r.aim.dh).toFixed(3)].map(q).join(','));
     L.push('');
     L.push(['Item', 'Value', 'Requirement', 'Result', 'Reference'].map(q).join(','));
@@ -1711,7 +1793,7 @@ function csvReport() {
 }
 function jsonReport() {
   const r = state.res; if (!r) return '';
-  const pick = { file: state.name, options: r.options, type: r.type, traffic: r.traffic, typeLabel: r.typeLabel, cutoffInFile: r.aim && r.aim.cutoffRaw, kinkInFile: r.aim && r.aim.kinkRaw, kinkDir: r.kinkDir, kinkSlope: r.kinkSlope, kinkShape: r.kinkShape, G: { grid: r.G_grid, d10m: r.G_10m, d25m: r.G_25m }, linearity: r.linearity, aim: r.aim, cutoffChecks: r.cutoffChecks, check: r.check && r.check.map(c => ({ id: r._lr(c.id), loc: r._lr(c.loc), value: c.value, min: c.min, max: c.max, margin: c.margin, pass: c.pass })), flux: r.flux, ranges: r.ranges, warnings: r.warnings };
+  const pick = { file: state.name, options: r.options, class: r.cls, symmetricalClass: !!r.symClass, type: r.type, traffic: r.traffic, typeLabel: r.typeLabel, cutoffInFile: r.aim && r.aim.cutoffRaw, kinkInFile: r.aim && r.aim.kinkRaw, kinkDir: r.kinkDir, kinkSlope: r.kinkSlope, kinkShape: r.kinkShape, G: { grid: r.G_grid, d10m: r.G_10m, d25m: r.G_25m }, linearity: r.linearity, aim: r.aim, cutoffChecks: r.cutoffChecks, check: r.check && r.check.map(c => ({ id: r._lr(c.id), loc: r._lr(c.loc), value: c.value, min: c.min, max: c.max, margin: c.margin, pass: c.pass })), flux: r.flux, ranges: r.ranges, warnings: r.warnings };
   return JSON.stringify(pick, (k, v) => typeof v === 'number' ? +v.toFixed(4) : v, 2);
 }
 /* ---------- report export (HTML / PDF / CSV / JSON) ---------- */
@@ -1749,7 +1831,7 @@ function buildModelInner() {
     st: t.classList.contains('verdict-ok') ? 'ok' : t.classList.contains('verdict-bad') ? 'bad' : null
   }));
   const settings = [
-    ['Regulation', 'UN R149, 00 series, passing beam Class C'],
+    ['Regulation', 'UN R149, 00 series, passing beam Class ' + (r.cls || 'C') + (r.symClass ? ' (symmetrical)' : '') + (o.cls === 'auto' ? ', chosen automatically' : '')],
     ['Traffic side', ({ auto: 'detected from cut-off shape', RHT: 'right-hand traffic (set)', LHT: 'left-hand traffic (set)' })[o.traffic]],
     ['Aim', $('optAim').selectedOptions[0].textContent],
     ['Kink for horizontal aim', $('optHMethod').selectedOptions[0].textContent],
@@ -1764,8 +1846,8 @@ function buildModelInner() {
   const verdict = { big: vEl.querySelector('.big').innerText.trim(), what: vEl.querySelector('.what').innerText.trim(),
     st: vEl.classList.contains('ok') ? 'ok' : vEl.classList.contains('bad') ? 'bad' : 'na',
     fails: [...vEl.querySelectorAll('.fails button')].map(b => (b.querySelector('b').innerText + ' ' + b.querySelector('span').innerText).replace(/\s+/g, ' ').trim()) };
-  const verdictBanner = r.verdict && r.type !== 'asym' ? r.verdict : null;
-  const asym = r.type === 'asym';
+  const verdictBanner = r.verdict && !r.check ? r.verdict : null;
+  const asym = !!r.check;
   return {
     file: state.name, date: PRINT_DATE(), example: state.isExample, type: r.type, tiles, verdict, settings, warnings, verdictBanner,
     cut: r.type !== 'none' ? tableData($('tblCut')) : null,
@@ -1797,7 +1879,7 @@ function captureCharts() {
   }
   return out;
 }
-const MAP_CAPTION = 'Aimed beam, screen angles in degrees, log scale. Magenta: cut-off line (G ≥ 0.08), ◆ kink. Dots and lines: R149 test points and segments (green pass, red fail). Dashed polygon: Zone III. Isolines 625, 1 750, 5 100, 10 100, 20 000 cd.';
+const MAP_CAPTION = 'Aimed beam, screen angles in degrees, log scale. Magenta: cut-off line (G ≥ 0.08), ◆ kink (asymmetric beams). Dots, lines and boxes: R149 test points, segments and zones (green pass, red fail). Dashed polygon: Zone III (Class C) or Zone 1 (Classes CS, DS). Isolines 625, 1 750, 5 100, 10 100, 20 000 cd.';
 
 /* ----- HTML report ----- */
 function htmlReport(M, imgs) {
@@ -1848,7 +1930,7 @@ function htmlReport(M, imgs) {
     '<h2>Additional beam data</h2>' + kv(M.extra) + tbl(M.ranges) +
     '<h2>File</h2>' + kv(M.fileKv) +
     '<h2>Method</h2><ul class="notes">' + M.notes.map(n => '<li>' + e(n) + '</li>').join('') + '</ul>' +
-    '<footer>beamCutoff · UN R149 (00 series) Class C · values computed from the IES file in the browser; verify limits against your controlled copy of the regulation.</footer>' +
+    '<footer>beamCutoff · UN R149 (00 series) Class ' + e(state.res.cls || 'C') + ' · values computed from the IES file in the browser; verify limits against your controlled copy of the regulation.</footer>' +
     '</div></body></html>';
 }
 
@@ -2116,7 +2198,7 @@ function pdfReport(M, imgs) {
   if (M.ranges) d.table(M.ranges, [0.6, 0.2, 0.2]);
   d.heading('File'); d.kv(M.fileKv);
   d.heading('Method'); M.notes.forEach(n => d.bullet(n));
-  return d.build('beamCutoff · UN R149 (00 series) Class C · ' + M.file.slice(0, 70));
+  return d.build('beamCutoff · UN R149 (00 series) Class ' + (state.res.cls || 'C') + ' · ' + M.file.slice(0, 70));
 }
 
 /* ----- saving ----- */

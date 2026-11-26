@@ -33,7 +33,7 @@ function buildModelInner() {
     st: t.classList.contains('verdict-ok') ? 'ok' : t.classList.contains('verdict-bad') ? 'bad' : null
   }));
   const settings = [
-    ['Regulation', 'UN R149, 00 series, passing beam Class C'],
+    ['Regulation', 'UN R149, 00 series, passing beam Class ' + (r.cls || 'C') + (r.symClass ? ' (symmetrical)' : '') + (o.cls === 'auto' ? ', chosen automatically' : '')],
     ['Traffic side', ({ auto: 'detected from cut-off shape', RHT: 'right-hand traffic (set)', LHT: 'left-hand traffic (set)' })[o.traffic]],
     ['Aim', $('optAim').selectedOptions[0].textContent],
     ['Kink for horizontal aim', $('optHMethod').selectedOptions[0].textContent],
@@ -48,8 +48,8 @@ function buildModelInner() {
   const verdict = { big: vEl.querySelector('.big').innerText.trim(), what: vEl.querySelector('.what').innerText.trim(),
     st: vEl.classList.contains('ok') ? 'ok' : vEl.classList.contains('bad') ? 'bad' : 'na',
     fails: [...vEl.querySelectorAll('.fails button')].map(b => (b.querySelector('b').innerText + ' ' + b.querySelector('span').innerText).replace(/\s+/g, ' ').trim()) };
-  const verdictBanner = r.verdict && r.type !== 'asym' ? r.verdict : null;
-  const asym = r.type === 'asym';
+  const verdictBanner = r.verdict && !r.check ? r.verdict : null;
+  const asym = !!r.check;
   return {
     file: state.name, date: PRINT_DATE(), example: state.isExample, type: r.type, tiles, verdict, settings, warnings, verdictBanner,
     cut: r.type !== 'none' ? tableData($('tblCut')) : null,
@@ -81,7 +81,7 @@ function captureCharts() {
   }
   return out;
 }
-const MAP_CAPTION = 'Aimed beam, screen angles in degrees, log scale. Magenta: cut-off line (G ≥ 0.08), ◆ kink. Dots and lines: R149 test points and segments (green pass, red fail). Dashed polygon: Zone III. Isolines 625, 1 750, 5 100, 10 100, 20 000 cd.';
+const MAP_CAPTION = 'Aimed beam, screen angles in degrees, log scale. Magenta: cut-off line (G ≥ 0.08), ◆ kink (asymmetric beams). Dots, lines and boxes: R149 test points, segments and zones (green pass, red fail). Dashed polygon: Zone III (Class C) or Zone 1 (Classes CS, DS). Isolines 625, 1 750, 5 100, 10 100, 20 000 cd.';
 
 /* ----- HTML report ----- */
 function htmlReport(M, imgs) {
@@ -132,7 +132,7 @@ function htmlReport(M, imgs) {
     '<h2>Additional beam data</h2>' + kv(M.extra) + tbl(M.ranges) +
     '<h2>File</h2>' + kv(M.fileKv) +
     '<h2>Method</h2><ul class="notes">' + M.notes.map(n => '<li>' + e(n) + '</li>').join('') + '</ul>' +
-    '<footer>beamCutoff · UN R149 (00 series) Class C · values computed from the IES file in the browser; verify limits against your controlled copy of the regulation.</footer>' +
+    '<footer>beamCutoff · UN R149 (00 series) Class ' + e(state.res.cls || 'C') + ' · values computed from the IES file in the browser; verify limits against your controlled copy of the regulation.</footer>' +
     '</div></body></html>';
 }
 
@@ -400,7 +400,7 @@ function pdfReport(M, imgs) {
   if (M.ranges) d.table(M.ranges, [0.6, 0.2, 0.2]);
   d.heading('File'); d.kv(M.fileKv);
   d.heading('Method'); M.notes.forEach(n => d.bullet(n));
-  return d.build('beamCutoff · UN R149 (00 series) Class C · ' + M.file.slice(0, 70));
+  return d.build('beamCutoff · UN R149 (00 series) Class ' + (state.res.cls || 'C') + ' · ' + M.file.slice(0, 70));
 }
 
 /* ----- saving ----- */
