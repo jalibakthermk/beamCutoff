@@ -229,22 +229,27 @@ function BCCoreFactory() {
       if (g > bestG) { bestG = g; best = k; }
     }
     if (best < 0) return { v: NaN, G: 0, vs, Is, Gs: G, peaks: [], thr };
-    let vPk = vs[best];
-    if (best > half && best < n - half - 1 && isFinite(G[best - 1]) && isFinite(G[best + 1])) { // parabolic refinement
+    // Cut-off position = centre of the band around the maximum where G stays within 5 % of it.
+    // On coarse or soft profiles G has a flat top (0.2° grids: up to 0.3° wide); taking the bare
+    // argmax there jumps from one end of the plateau to the other between neighbouring scans.
+    let lo = best, hi = best; const lim = 0.95 * bestG;
+    while (lo - 1 >= half && G[lo - 1] >= lim) lo--;
+    while (hi + 1 < n - half && G[hi + 1] >= lim) hi++;
+    let vPk = 0.5 * (vs[lo] + vs[hi]);
+    if (lo === hi && best > half && best < n - half - 1 && isFinite(G[best - 1]) && isFinite(G[best + 1])) { // single sharp peak: parabolic refinement
       const a = G[best - 1], b = G[best], c = G[best + 1], den = a - 2 * b + c;
       if (den < 0) vPk += step * 0.5 * (a - c) / den;
     }
-    const at = { vBright: vs[best - half], vDark: vs[best + half], IBright: Is[best - half], IDark: Is[best + half] };
-    // secondary peaks (for "only one cut-off" check)
-    const peaks = [];
-    for (let k = half + 1; k < n - half - 1; k++) {
-      if (!(G[k] >= 0.08 && G[k] >= (isFinite(G[k - 1]) ? G[k - 1] : -1) && G[k] > (isFinite(G[k + 1]) ? G[k + 1] : -1))) continue;
-      const kb = Math.max(0, k - below); if (Is[kb] < 0.05 * imax) continue;
-      peaks.push({ v: vs[k], G: G[k] });
+    const at = { vBright: vs[best - half], vDark: vs[best + half], IBright: Is[best - half], IDark: Is[best + half], plateau: [vs[lo], vs[hi]] };
+    // separate cut-offs: runs where G ≥ 0.08 (with a bright zone below), split by a gap of at least 0.1°
+    const runs = []; let cur = null, gap = 0; const minGap = Math.round(0.1 / step);
+    for (let k = half; k < n - half; k++) {
+      const kb = Math.max(0, k - below);
+      const on = G[k] >= 0.08 && Is[kb] >= 0.05 * imax;
+      if (on) { if (cur && gap < minGap) { if (G[k] > cur.G) { cur.G = G[k]; cur.v = vs[k]; } } else { cur = { v: vs[k], G: G[k] }; runs.push(cur); } gap = 0; }
+      else if (cur) gap++;
     }
-    // merge peaks closer than 0.3°
-    const merged = [];
-    peaks.sort((a, b) => b.G - a.G).forEach(p => { if (!merged.some(q => Math.abs(q.v - p.v) < 0.3)) merged.push(p); });
+    const merged = runs.sort((a, b) => b.G - a.G);
     return { v: vPk, G: bestG, vs, Is, Gs: G, peaks: merged, thr, at };
   }
   // horizontal scan at fixed v. Gradient positive where it is brighter to the RIGHT.
@@ -265,8 +270,11 @@ function BCCoreFactory() {
       if (g > bestG) { bestG = g; best = k; }
     }
     if (best < 0) return { h: NaN, G: 0, hs, Is, Gs: G, thr };
-    let hPk = hs[best];
-    if (best > half && best < n - half - 1 && isFinite(G[best - 1]) && isFinite(G[best + 1])) { const a = G[best - 1], b = G[best], c = G[best + 1], den = a - 2 * b + c; if (den < 0) hPk += step * 0.5 * (a - c) / den; }
+    let lo = best, hi = best; const lim = 0.95 * bestG;
+    while (lo - 1 >= half && G[lo - 1] >= lim) lo--;
+    while (hi + 1 < n - half && G[hi + 1] >= lim) hi++;
+    let hPk = 0.5 * (hs[lo] + hs[hi]);
+    if (lo === hi && best > half && best < n - half - 1 && isFinite(G[best - 1]) && isFinite(G[best + 1])) { const a = G[best - 1], b = G[best], c = G[best + 1], den = a - 2 * b + c; if (den < 0) hPk += step * 0.5 * (a - c) / den; }
     return { h: hPk, G: bestG, hs, Is, Gs: G, thr };
   }
 
