@@ -353,7 +353,7 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
             <div class="field"><label for="optDh">Horizontal (°, + right)</label><input type="number" id="optDh" value="0" step="0.05"></div>
           </div>
           <div class="sub-h">Cut-off gradient</div>
-          <div class="field"><label for="optGThr">Intensity threshold (cd) <span class="hint" tabindex="0" data-tip="A gradient value G = log I(β) − log I(β + 0.1°) is used only where the darker of its two intensities is at least this value. This stops noisy low intensities above the cut-off from giving false maxima. Empty: auto (1 % of the scan maximum). 0: off.">?</span></label><input type="number" id="optGThr" min="0" step="10" placeholder="auto (1 % of scan max)"></div>
+          <div class="field"><label for="optGThr">Intensity threshold (cd) <span class="hint" tabindex="0" data-tip="A gradient value G = log I(β) − log I(β + 0.1°) is used only where the darker of its two intensities is at least this many candela. This stops noisy low intensities above the cut-off from giving false maxima. 0 switches it off. For noisy simulations try 500–1 000 cd.">?</span></label><input type="number" id="optGThr" min="0" step="50" value="100"></div>
           <div class="field"><label for="optNoise">Noise reduction <span class="hint" tabindex="0" data-tip="For simulated files with ray-trace noise. Each vertical scan is averaged over a small horizontal band (±0.15° or ±0.4°). Along the horizontal cut-off this removes noise without blurring the vertical profile. Photometric test points are never smoothed.">?</span></label>
             <select id="optNoise"><option value="none">None</option><option value="light">Light (H band ±0.15°)</option><option value="strong">Strong (H band ±0.4°)</option></select></div>
           <div class="field"><label for="optDet">Detector aperture <span class="hint" tabindex="0" data-tip="Averages the intensity over the photometer's acceptance disc, as at 10 m with Ø10 mm or 25 m with Ø30 mm. The sharpness checks always use both apertures.">?</span></label>
@@ -453,7 +453,7 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
       <ul class="notes" id="methodNotes">
         <li>Regulation basis: UN R149, 00 series (original version) as amended by its supplements. Photometric values for Class C from Table 9, Imax segment and cut-off position from Table 10 and Zone III from Table 11; for the symmetrical Classes CS and DS from Table 35 (with Zones 1 and 2); cut-off quality and instrumental aiming from Annex 6. Verify limits against your controlled copy of the 00 series, Supplement 6 before using the result for approval work.</li>
         <li>Angles: Type A/B files are read as screen angles (H right, V up). Type C files are mapped H = C-plane angle, V = γ − 90°. Use the axis options if the file uses another sign convention.</li>
-        <li>Gradient G = log I(β) − log I(β + 0.1°), evaluated on a 0.01° resampled vertical scan. For the scans the file is interpolated linearly in log I, so coarse grids (0.1°–0.2°) no longer inflate G; test points and zones still use linear interpolation in I. The cut-off is the inflection point (maximum G). A G value counts only where the darker of its two intensities is at or above the gradient intensity threshold (auto: 1 % of the scan maximum) and where the beam is bright 0.3° below. Optional noise reduction averages each scan over a small horizontal band. The page reports where the maximum was found, the two intensities, and the spread of G between 2° and 3° from V-V.</li>
+        <li>Gradient G = log I(β) − log I(β + 0.1°), evaluated on a 0.01° resampled vertical scan. For the scans the file is interpolated linearly in log I, so coarse grids (0.1°–0.2°) no longer inflate G; test points and zones still use linear interpolation in I. The cut-off is the inflection point (maximum G). A G value counts only where the darker of its two intensities is at or above the gradient intensity threshold in cd (default 100 cd, 0 = off) and where the beam is bright 0.3° below. Optional noise reduction averages each scan over a small horizontal band. The page reports where the maximum was found, the two intensities, and the spread of G between 2° and 3° from V-V.</li>
         <li>Minimum sharpness uses the better of the 10 m/Ø10 mm and 25 m/Ø30 mm detector apertures; maximum sharpness uses 25 m/Ø30 mm, as in Annex 6 §2. Simulation files on grids coarser than 0.05° give a biased G.</li>
         <li>Horizontal aim. Geometric kink: intersection of the horizontal part with a straight-line fit of the inclined part. Method (a): inflection on a horizontal scan at 0.2°D (after vertical aim) placed on V-V. Method (b): inflections on vertical scans at 1R, 2R, 3R, line through them, intersection with the cut-off line B placed on V-V. Methods (a) and (b) are what the applicant declares for instrumental aiming; for a 15° cut-off they put the geometric kink left of V-V.</li>
         <li>One lamp is evaluated with its full intensity. Footnote minima "each side ≥ 50 cd" (Class C) and the full point-2 minimum (CS/DS) are applied to this lamp. S50/S100 sums are evaluated without position lamps. LHT beams are mirrored and checked with L and R swapped.</li>
@@ -503,7 +503,7 @@ function opts() {
     mountH: Math.max(0.1, parseFloat($('optMount').value) || 0.65),
     dvExtra: parseFloat($('optDv').value) || 0, dhExtra: parseFloat($('optDh').value) || 0,
     detector: $('optDet').value,
-    gThr: $('optGThr').value.trim() === '' ? 'auto' : $('optGThr').value, noise: $('optNoise').value
+    gThr: Math.max(0, parseFloat($('optGThr').value) || 0), noise: $('optNoise').value
   };
 }
 
@@ -512,53 +512,123 @@ function busy(on, t) { $('busy').hidden = !on; if (t) $('busyText').textContent 
 let toastT;
 function toast(t) { const el = $('toast'); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 3800); }
 
-/* ---------- loading ---------- */
-function loadText(text, name) {
-  setStatus('Reading file…'); busy(true, 'Reading ' + name + '…');
-  setTimeout(() => {
-    try {
-      state.ies = C.parseIES(text); state.name = name; state.isExample = false;
-      buildAndRun();
-    } catch (e) { busy(false); showError(e.message); }
-  }, 20);
+/* ---------- loading & analysis (runs in a Web Worker so the page never freezes) ---------- */
+const WORKER_SRC = '"use strict";const C=(' + BCCoreFactory.toString() + ')();let ies=null,grid=null;' +
+  'self.onmessage=function(e){var m=e.data;try{' +
+  'if(m.type==="load"){ies=C.parseIES(m.text);grid=C.buildGrid(ies,m.flips);var meta={format:ies.format,keywords:ies.keywords,tilt:ies.tilt,hdr:ies.hdr};self.postMessage({type:"loaded",id:m.id,grid:grid,meta:meta});}' +
+  'else if(m.type==="regrid"){grid=C.buildGrid(ies,m.flips);self.postMessage({type:"loaded",id:m.id,grid:grid});}' +
+  'else if(m.type==="setGrid"){grid=m.grid;ies=null;self.postMessage({type:"ok",id:m.id});}' +
+  'else if(m.type==="run"){var t0=performance.now();var res=C.analyse(grid,m.opts);self.postMessage({type:"result",id:m.id,res:res,ms:performance.now()-t0});}' +
+  '}catch(err){self.postMessage({type:"error",id:m.id,message:String(err&&err.message||err)});}};';
+const W = { w: null, seq: 0, pending: new Map(), seeded: null, url: null, loadSeq: 0, inFlight: false };
+function wCreate() {
+  try {
+    if (!W.url) W.url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' }));
+    const w = new Worker(W.url);
+    w.onmessage = (e) => { const m = e.data, p = W.pending.get(m.id); if (!p) return; W.pending.delete(m.id); if (m.type === 'error') p.reject(new Error(m.message)); else p.resolve(m); };
+    w.onerror = (e) => { e.preventDefault && e.preventDefault(); const err = new Error((e && e.message) || 'The analysis worker stopped (out of memory?)'); W.pending.forEach(p => p.reject(err)); W.pending.clear(); };
+    return w;
+  } catch (e) { return null; }
 }
-function loadExample(kind) {
+function wLocal(msg) { // same protocol on the main thread, used when Workers are not available
+  return new Promise((resolve, reject) => setTimeout(() => {
+    try {
+      if (msg.type === 'load') { W.ies = C.parseIES(msg.text); const g = C.buildGrid(W.ies, msg.flips); resolve({ grid: g, meta: { format: W.ies.format, keywords: W.ies.keywords, tilt: W.ies.tilt, hdr: W.ies.hdr } }); }
+      else if (msg.type === 'regrid') resolve({ grid: C.buildGrid(W.ies, msg.flips) });
+      else if (msg.type === 'setGrid') resolve({});
+      else if (msg.type === 'run') { const t0 = performance.now(); const res = C.analyse(state.grid, msg.opts); resolve({ res, ms: performance.now() - t0 }); }
+    } catch (e) { reject(e); }
+  }, 20));
+}
+function wCall(msg) {
+  if (!W.w) return wLocal(msg);
+  return new Promise((resolve, reject) => { const id = ++W.seq; W.pending.set(id, { resolve, reject }); W.w.postMessage(Object.assign({ id }, msg)); });
+}
+function wRestart() { // cancel a long analysis: drop the worker and start a fresh one with the same data
+  if (!W.w) return;
+  W.w.terminate(); const err = new Error('cancelled'); err.cancelled = true;
+  W.pending.forEach(p => p.reject(err)); W.pending.clear();
+  W.w = wCreate();
+  W.seeded = state.source ? wCall(state.source).catch(() => {}) : null;
+}
+W.w = wCreate();
+const flips = () => ({ flipV: $('optFlipV').checked, flipH: $('optFlipH').checked });
+
+async function loadText(text, name) {
+  setStatus('Reading file…'); busy(true, 'Reading ' + name + '…');
+  if (W.inFlight) wRestart();
+  const myLoad = ++W.loadSeq;
+  try {
+    const src = { type: 'load', text, flips: flips() };
+    W.seeded = wCall(src);
+    const m = await W.seeded;
+    if (myLoad !== W.loadSeq) return;
+    state.source = src; state.ies = m.meta; state.grid = m.grid; state.name = name; state.isExample = false;
+    run(true);
+  } catch (e) { if (!e.cancelled) { busy(false); showError(e.message, 'read'); } }
+}
+async function loadExample(kind) {
   state.ies = null; state.isExample = true; state.exampleKind = kind === 'sym' ? 'sym' : 'rht';
   state.name = state.exampleKind === 'sym' ? 'Built-in example: synthetic symmetrical low beam, flat cut-off (not a real lamp)' : 'Built-in example: synthetic RHT low beam, 15° kink (not a real lamp)';
-  buildAndRun();
+  if (W.inFlight) wRestart();
+  W.loadSeq++;
+  state.grid = state.exampleKind === 'sym' ? syntheticExample(SYM_EXAMPLE) : syntheticExample();
+  state.source = { type: 'setGrid', grid: state.grid };
+  W.seeded = wCall(state.source).catch(() => {});
+  run(true);
 }
-function buildAndRun() {
+async function buildAndRun() { // axis options changed
+  if (state.isExample || !state.source) return;
+  if (W.inFlight) wRestart();
   try {
-    if (state.isExample) state.grid = state.exampleKind === 'sym' ? syntheticExample(SYM_EXAMPLE) : syntheticExample();
-    else state.grid = C.buildGrid(state.ies, { flipV: $('optFlipV').checked, flipH: $('optFlipH').checked });
-    run();
-  } catch (e) { busy(false); showError(e.message); }
+    busy(true, 'Rebuilding the grid…');
+    state.source = { type: 'load', text: state.source.text, flips: flips() };
+    if (W.w) { await W.seeded; const m = await wCall({ type: 'regrid', flips: flips() }); state.grid = m.grid; }
+    else { const m = await wLocal({ type: 'regrid', flips: flips() }); state.grid = m.grid; }
+    run(true);
+  } catch (e) { if (!e.cancelled) { busy(false); showError(e.message, 'read'); } }
 }
-function run() {
+let runTimer = null, runToken = 0;
+function run(now) { // debounced: rapid setting changes start only one analysis
+  clearTimeout(runTimer);
   setStatus('Analysing…'); busy(true, 'Analysing…');
-  setTimeout(() => {
-    try {
-      const t0 = performance.now();
-      state.res = C.analyse(state.grid, opts());
-      render();
-      setStatus('Analysed in ' + Math.round(performance.now() - t0) + ' ms');
-    } catch (e) { console.error(e); showError('Analysis failed: ' + e.message); }
-    busy(false);
-  }, 20);
+  runTimer = setTimeout(runNow, now ? 0 : 250);
 }
-function showError(msg) {
-  busy(false); toast('Could not read the file.');
-  $('banners').innerHTML = '<div class="banner bad"><strong>Could not read the file.</strong> ' + esc(msg) + ' Check that it is an IES LM-63 file with H-V (Type A/B) or Type C photometry.</div>';
+async function runNow() {
+  if (!state.grid) return;
+  if (W.inFlight) wRestart(); // a newer request replaces a running one
+  const my = ++runToken;
+  W.inFlight = true;
+  try {
+    if (W.seeded) await W.seeded;
+    const m = await wCall({ type: 'run', opts: opts() });
+    if (my !== runToken) return;
+    state.res = m.res;
+    try { render(); }
+    catch (e) { console.error(e); showError('The result could not be displayed: ' + e.message + '. Please report this with the IES file.', 'render'); }
+    setStatus('Analysed in ' + Math.round(m.ms) + ' ms');
+  } catch (e) {
+    if (e.cancelled || my !== runToken) return;
+    console.error(e); showError(e.message, 'analyse');
+  } finally {
+    if (my === runToken) { W.inFlight = false; busy(false); }
+  }
+}
+function showError(msg, stage) {
+  busy(false);
+  const title = stage === 'analyse' ? 'The analysis failed.' : stage === 'render' ? 'Display error.' : 'Could not read the file.';
+  toast(title);
+  const tail = stage === 'read' || !stage ? ' Check that it is an IES LM-63 file with H-V (Type A/B) or Type C photometry.' : '';
+  $('banners').innerHTML = '<div class="banner bad"><strong>' + title + '</strong> ' + esc(msg) + tail + '</div>';
   setStatus('Error');
 }
 
 const drop = $('drop'), fileIn = $('file');
 drop.addEventListener('click', () => fileIn.click());
 drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileIn.click(); } });
-fileIn.addEventListener('change', () => { const f = fileIn.files[0]; if (f) readFile(f); });
+fileIn.addEventListener('change', () => { const f = fileIn.files[0]; if (f) readFile(f); fileIn.value = ''; });
 ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
-drop.addEventListener('drop', (e) => { const f = e.dataTransfer.files[0]; if (f) readFile(f); });
 document.addEventListener('dragover', (e) => e.preventDefault());
 document.addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) readFile(f); });
 function readFile(f) { const r = new FileReader(); r.onload = () => loadText(r.result, f.name); r.onerror = () => showError('The browser could not read the file.'); r.readAsText(f); }
@@ -723,7 +793,7 @@ function renderCutTable() {
   if (r.gDetail) {
     const gd = r.gDetail.grid, sd2 = m === -1 ? 'R' : 'L';
     if (gd.at) kv.push(['G at 2.5°' + sd2 + ' (file grid) between', angV(gd.at.vBright) + ' ' + fmt(gd.at.IBright) + ' cd → ' + angV(gd.at.vDark) + ' ' + fmt(gd.at.IDark) + ' cd']);
-    kv.push(['Gradient intensity threshold', fmt(gd.thr) + ' cd' + (r.gDetail.thrAbs == null ? ' (auto, 1 % of scan max)' : r.gDetail.thrAbs === 0 ? ' (off)' : ' (set)')]);
+    kv.push(['Gradient intensity threshold', r.gDetail.thrAbs > 0 ? fmt(r.gDetail.thrAbs) + ' cd' : 'off']);
     if (r.gSpread) kv.push(['G between 2° and 3°' + sd2 + ' (min / median / max)', [r.gSpread.min, r.gSpread.median, r.gSpread.max].map(x => fmt(x, 3)).join(' / ')]);
     kv.push(['Noise reduction', ({ none: 'none', light: 'light, H band ±0.15°', strong: 'strong, H band ±0.4°' })[r.options.noise || 'none']]);
   }
@@ -857,7 +927,9 @@ function drawMap(tgt) {
   const m = r.mirror || 1;
   const aimed = state.view === 'aimed' && r.type !== 'none';
   const f0 = C.makeSampler(state.grid);
-  const f = aimed ? ((hd, v) => r.sampleAimed(m * hd, v)) : f0;
+  if (aimed && (!state.faFor || state.faFor !== r)) { state.fa = C.aimedSampler(state.grid, r); state.faFor = r; }
+  const fa = state.fa;
+  const f = aimed ? ((hd, v) => fa(m * hd, v)) : f0;
   if (on) state.mapF = f;
   // raster
   const nx = Math.min(500, Math.round(pw)), ny = Math.min(280, Math.round(ph));

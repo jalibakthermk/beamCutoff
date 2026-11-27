@@ -23,7 +23,7 @@ The IES file is read in your browser. Nothing is uploaded.
 
 ## Using it
 
-Open an IES file with **Open IES**, the drop zone, or by dropping it anywhere on the page. The verdict bar at the top lists any failing item; click one to jump to its row. The section bar under it moves between the map, scans, cut-off quality, photometry, aim robustness and beam data. Export the report from **PDF report** or the **Export** menu (HTML, CSV, JSON). Settings that are rarely changed (file axes, aim offsets, detector aperture, mounting height) are under **Advanced**.
+Open an IES file with **Open IES**, the drop zone, or by dropping it anywhere on the page. The verdict bar at the top lists any failing item; click one to jump to its row. The section bar under it moves between the map, scans, cut-off quality, photometry, aim robustness and beam data. Export the report from **PDF report** or the **Export** menu (HTML, CSV, JSON). Settings that are rarely changed (file axes, aim offsets, detector aperture, mounting height) are under **Advanced**, together with the cut-off gradient options: an intensity threshold in cd (a gradient sample counts only where the darker of its two intensities reaches it; default 100 cd, 0 = off) and noise reduction for ray-traced files. Parsing and analysis run in a background Web Worker, so large files (millions of values) do not freeze the page; a new setting cancels an analysis that is still running.
 
 ## Input
 

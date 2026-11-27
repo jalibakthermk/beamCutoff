@@ -2,7 +2,7 @@
  * Pure functions, no DOM. Works in browser (window.BCCore) and Node (module.exports).
  * Coordinate convention: H positive = right, V positive = up, degrees, 0/0 = lamp axis (HV).
  */
-(function (root) {
+function BCCoreFactory() {
   'use strict';
   const D2R = Math.PI / 180, R2D = 180 / Math.PI;
   const log10 = Math.log10;
@@ -10,26 +10,42 @@
   /* ------------------------------------------------------------------ */
   /* IES LM-63 parser                                                    */
   /* ------------------------------------------------------------------ */
-  function parseIES(text) {
-    const lines = text.split(/\r?\n/);
-    const keywords = {};
-    let tiltIdx = -1;
-    const firstLine = (lines[0] || '').trim();
-    for (let i = 0; i < lines.length; i++) {
-      const ln = lines[i].trim();
-      const m = ln.match(/^\[([^\]]+)\]\s*(.*)$/);
-      if (m) {
-        const k = m[1].toUpperCase();
-        keywords[k] = keywords[k] ? keywords[k] + ' ' + m[2] : m[2];
-      }
-      if (/^TILT\s*=/i.test(ln)) { tiltIdx = i; break; }
+  // Reads all numbers from text[start…] into a Float64Array without building huge string arrays
+  // (a 30 MB IES file used to need several hundred MB of temporary strings).
+  function readNumbers(text, start) {
+    let cap = 1 << 16, out = new Float64Array(cap), n = 0;
+    const len = text.length; let i = start;
+    while (i < len) {
+      let c = text.charCodeAt(i);
+      if (c <= 32 || c === 44) { i++; continue; } // whitespace or comma
+      const s0 = i;
+      while (i < len) { c = text.charCodeAt(i); if (c <= 32 || c === 44) break; i++; }
+      if (n === cap) { const nb = new Float64Array(cap *= 2); nb.set(out); out = nb; }
+      out[n++] = +text.slice(s0, i);
     }
-    if (tiltIdx < 0) throw new Error('No "TILT=" line found. This does not look like an IES LM-63 file.');
-    const tilt = lines[tiltIdx].split('=').slice(1).join('=').trim().toUpperCase();
-    const tok = lines.slice(tiltIdx + 1).join(' ').trim().split(/[\s,]+/).filter(Boolean).map(Number);
+    return out.subarray(0, n);
+  }
+  function parseIES(text) {
+    if (typeof text !== 'string' || !text.length) throw new Error('The file is empty.');
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    const keywords = {};
+    let pos = 0, tiltLine = null, firstLine = null;
+    while (pos < text.length) { // header lines only, up to TILT=
+      let e = text.indexOf('\n', pos); if (e < 0) e = text.length;
+      const ln = text.slice(pos, e).replace(/\r$/, '').trim();
+      if (firstLine === null) firstLine = ln;
+      pos = e + 1;
+      const m = ln.match(/^\[([^\]]+)\]\s*(.*)$/);
+      if (m) { const k = m[1].toUpperCase(); keywords[k] = keywords[k] ? keywords[k] + ' ' + m[2] : m[2]; }
+      if (/^TILT\s*=/i.test(ln)) { tiltLine = ln; break; }
+      if (pos > 200000) break; // a real header is short
+    }
+    if (tiltLine === null) throw new Error('No "TILT=" line found. This does not look like an IES LM-63 file.');
+    const tilt = tiltLine.split('=').slice(1).join('=').trim().toUpperCase();
+    const tok = readNumbers(text, pos);
     let p = 0;
     if (tilt === 'INCLUDE') { p++; const n = tok[p++]; p += 2 * n; }
-    const need = (k) => { if (p + k > tok.length) throw new Error('IES file is truncated (not enough numeric values).'); };
+    const need = (k) => { if (!(p + k <= tok.length)) throw new Error('IES file is truncated (not enough numeric values).'); };
     need(13);
     const hdr = {
       nLamps: tok[p++], lumensPerLamp: tok[p++], multiplier: tok[p++],
@@ -39,11 +55,16 @@
     };
     const { nV, nH } = hdr;
     if (!(nV > 1 && nH > 0)) throw new Error('Invalid number of angles in IES header.');
+    if (nV * nH > 40e6) throw new Error('The file has ' + nV + ' × ' + nH + ' values, too many to analyse in a browser.');
     need(nV + nH + nV * nH);
-    const vAng = Float64Array.from(tok.slice(p, p + nV)); p += nV;
-    const hAng = Float64Array.from(tok.slice(p, p + nH)); p += nH;
-    const cd = Float64Array.from(tok.slice(p, p + nV * nH)); p += nV * nH;
-    for (let i = 0; i < cd.length; i++) if (!isFinite(cd[i])) throw new Error('Non-numeric candela value in file.');
+    const vAng = tok.slice(p, p + nV); p += nV;
+    const hAng = tok.slice(p, p + nH); p += nH;
+    for (let i = 0; i < nV; i++) if (!isFinite(vAng[i])) throw new Error('Non-numeric vertical angle in file.');
+    for (let i = 0; i < nH; i++) if (!isFinite(hAng[i])) throw new Error('Non-numeric horizontal angle in file.');
+    const cd = tok.slice(p, p + nV * nH); p += nV * nH;
+    for (let i = 0; i < cd.length; i++) if (!isFinite(cd[i])) throw new Error('Non-numeric candela value in file (value ' + (i + 1) + ').');
+    if (hdr.multiplier == null || !isFinite(hdr.multiplier)) hdr.multiplier = 1;
+    if (hdr.ballast == null || !isFinite(hdr.ballast)) hdr.ballast = 1;
     return { format: firstLine, keywords, tilt, hdr, vAng, hAng, cd };
   }
 
@@ -62,7 +83,7 @@
       notes.push('Type C file mapped to H/V: H = C-plane angle (−180…180), V = γ − 90°.');
       let planes = [];
       for (let j = 0; j < hAng.length; j++) planes.push({ c: hAng[j], vals: colOf(j) });
-      const cmax = Math.max(...hAng), cmin = Math.min(...hAng);
+      let cmax = -Infinity, cmin = Infinity; for (const x of hAng) { if (x > cmax) cmax = x; if (x < cmin) cmin = x; }
       if (hAng.length === 1) { planes.push({ c: 180, vals: planes[0].vals }); planes.push({ c: 360, vals: planes[0].vals }); notes.push('Rotationally symmetric Type C file.'); }
       else if (cmin === 0 && cmax <= 90) {
         const ext = [];
@@ -79,7 +100,7 @@
     } else { // Type A / B : H-V photometry (taken directly as screen angles)
       if (hdr.photType !== 2 && hdr.photType !== 3) notes.push('Unknown photometric type ' + hdr.photType + ' — treated as H-V (Type B).');
       for (let j = 0; j < hAng.length; j++) cols.push({ h: hAng[j], vals: colOf(j) });
-      const hmin = Math.min(...hAng);
+      let hmin = Infinity; for (const x of hAng) if (x < hmin) hmin = x;
       if (hmin >= 0 && hAng.length > 1) {
         const mir = cols.filter(c => c.h > 0).map(c => ({ h: -c.h, vals: c.vals }));
         cols = cols.concat(mir);
@@ -254,7 +275,7 @@
   function cutoffLine(f, h0, h1, step, win, gp) {
     const out = [];
     for (let h = h0; h <= h1 + 1e-9; h += step) {
-      const s = vscan(f, +h.toFixed(4), win[0], win[1], gp, 0.01);
+      const s = vscan(f, +h.toFixed(4), win[0], win[1], gp, 0.025);
       out.push({ h: +h.toFixed(4), v: s.v, G: s.G });
     }
     return out;
@@ -444,15 +465,15 @@
   }
 
   function analyse(g, o) {
-    o = Object.assign({ traffic: 'auto', hMethod: 'geom', aimMode: 'full', target: -0.57, cls: 'C', detector: 'none', mountH: 0.65, dvExtra: 0, dhExtra: 0 }, o || {});
+    o = Object.assign({ traffic: 'auto', hMethod: 'geom', aimMode: 'full', target: -0.57, cls: 'C', detector: 'none', gThr: 100, mountH: 0.65, dvExtra: 0, dhExtra: 0 }, o || {});
     const f0 = makeSampler(g);                       // photometry (test points, zones): linear in I
     const floorCd = Math.max(1, 1e-4 * g.Imax);
     const fL = makeLogSampler(g, floorCd);            // cut-off scans and gradient: linear in log I
     const NOISE = { none: 0, light: 0.15, strong: 0.4 };
     const fLn = withHBand(fL, NOISE[o.noise] || 0);   // optional noise reduction (horizontal band average)
     const fRaw = withAperture(fLn, APERTURE[o.detector] || 0);
-    const thrIn = o.gThr;
-    const GP = { floor: floorCd, abs: (thrIn === '' || thrIn == null || thrIn === 'auto') ? null : Math.max(0, +thrIn), rel: 0.01 };
+    const thrNum = +o.gThr;
+    const GP = { floor: floorCd, abs: isFinite(thrNum) && thrNum > 0 ? thrNum : 0, rel: 0 }; // gradient intensity threshold, cd
     const vMin = g.V[0], vMax = g.V[g.nV - 1];
     const win = [Math.max(vMin + 0.1, -6), Math.min(vMax - 0.1, 4)];
     const warnings = [];
@@ -461,11 +482,14 @@
     if (vMin > -4 || vMax < 4) warnings.push('V range is ' + vMin + '…' + vMax + '°. R149 test points need at least 4°D…4°U.');
 
     // 1. raw cut-off line (as measured)
-    const rawLine = cutoffLine(fRaw, -10, 10, 0.1, win, GP);
+    const sL = vscan(fRaw, -2.5, win[0], win[1], GP), sR = vscan(fRaw, 2.5, win[0], win[1], GP);
+    // the cut-off lines only need a band around the cut-off found at 2.5°L/R (much faster on big files)
+    const vs0 = [sL.v, sR.v].filter(isFinite);
+    const lineWin = vs0.length ? [Math.max(win[0], Math.min(...vs0) - 2), Math.min(win[1], Math.max(...vs0) + 2.5)] : win;
+    const rawLine = cutoffLine(fRaw, -10, 10, 0.1, lineWin, GP);
     const sel = (a, b) => rawLine.filter(p => p.h >= a - 1e-9 && p.h <= b + 1e-9 && p.G >= 0.08);
     const left = sel(-4, -1.5), right = sel(1.5, 4);
     const vLeft = median(left.map(p => p.v)), vRight = median(right.map(p => p.v));
-    const sL = vscan(fRaw, -2.5, win[0], win[1], GP), sR = vscan(fRaw, 2.5, win[0], win[1], GP);
     let type, traffic = null, kinkDir = null;
     const sharpL = left.length >= 6, sharpR = right.length >= 6;
     let delta = vRight - vLeft;
@@ -488,7 +512,8 @@
     };
     res.fluxRaw = flux(g, 0);
     if (type === 'none') {
-      res.verdict = 'No distinct cut-off found (G < 0.08 on both sides). The file looks like a driving (high) beam or a beam without cut-off; low-beam cut-off analysis is not applicable.';
+      res.verdict = 'No distinct cut-off found (G < 0.08 on both sides). The file looks like a driving (high) beam or a beam without cut-off; low-beam cut-off analysis is not applicable.' +
+        (GP.abs > 0 ? ' The gradient intensity threshold is ' + GP.abs + ' cd: if it is higher than the intensity just above the cut-off, lower it under Advanced.' : '');
       return res;
     }
 
@@ -545,7 +570,7 @@
     dv += o.dvExtra || 0;
 
     // canonical cut-off line
-    const cLine = cutoffLine(fc, -10, 10, 0.1, win, GP);
+    const cLine = cutoffLine(fc, -10, 10, 0.1, lineWin, GP);
     res.cLine = cLine;
 
     // 4. kink (asymmetric classes only)
@@ -625,7 +650,6 @@
     res.cutoffAimed = vCut + dv;
 
     const fa = transformed(fcNoAp, 1, dh, dv); // aimed photometry without detector smoothing
-    res.sampleAimed = fa;
     const vBottom = Math.max(vMin + dv, -30);
 
     // 5. regulation check
@@ -723,6 +747,14 @@
     return res;
   }
 
-  const api = { parseIES, buildGrid, makeSampler, makeLogSampler, transformed, vscan, hscan, analyse, classTable, regulationCheck, CUTOFF_RANGE, ZONE_IIIa, ZONE_1, SYM_CLASSES, flux, APERTURE };
-  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.BCCore = api;
-})(typeof window !== 'undefined' ? window : this);
+  // aimed photometry sampler for a result (results carry no functions, so they can come from a Web Worker)
+  function aimedSampler(g, res) { const f0 = makeSampler(g); return transformed(transformed(f0, res.mirror || 1, 0, 0), 1, res.aim.dh, res.aim.dv); }
+
+  const api = { aimedSampler, parseIES, buildGrid, makeSampler, makeLogSampler, transformed, vscan, hscan, analyse, classTable, regulationCheck, CUTOFF_RANGE, ZONE_IIIa, ZONE_1, SYM_CLASSES, flux, APERTURE };
+  return api;
+}
+(function () {
+  const api = BCCoreFactory();
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else if (typeof window !== 'undefined') { window.BCCore = api; window.BCCoreFactory = BCCoreFactory; }
+})();

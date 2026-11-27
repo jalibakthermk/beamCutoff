@@ -40,7 +40,7 @@ function buildModelInner() {
     ['Cut-off target', fmt(Math.abs(o.target), 2) + '°D'],
     ['Extra shift (V / H)', fmt(o.dvExtra, 2) + '° / ' + fmt(o.dhExtra, 2) + '°'],
     ['Detector aperture (cut-off line)', $('optDet').selectedOptions[0].textContent],
-    ['Gradient intensity threshold', o.gThr === 'auto' ? 'auto (1 % of scan max)' : fmt(+o.gThr) + ' cd'],
+    ['Gradient intensity threshold', +o.gThr > 0 ? fmt(+o.gThr) + ' cd' : 'off'],
     ['Noise reduction', $('optNoise').selectedOptions[0].textContent],
     ['Mounting height', fmt(o.mountH, 2) + ' m']
   ];

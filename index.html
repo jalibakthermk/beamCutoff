@@ -353,7 +353,7 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
             <div class="field"><label for="optDh">Horizontal (°, + right)</label><input type="number" id="optDh" value="0" step="0.05"></div>
           </div>
           <div class="sub-h">Cut-off gradient</div>
-          <div class="field"><label for="optGThr">Intensity threshold (cd) <span class="hint" tabindex="0" data-tip="A gradient value G = log I(β) − log I(β + 0.1°) is used only where the darker of its two intensities is at least this value. This stops noisy low intensities above the cut-off from giving false maxima. Empty: auto (1 % of the scan maximum). 0: off.">?</span></label><input type="number" id="optGThr" min="0" step="10" placeholder="auto (1 % of scan max)"></div>
+          <div class="field"><label for="optGThr">Intensity threshold (cd) <span class="hint" tabindex="0" data-tip="A gradient value G = log I(β) − log I(β + 0.1°) is used only where the darker of its two intensities is at least this many candela. This stops noisy low intensities above the cut-off from giving false maxima. 0 switches it off. For noisy simulations try 500–1 000 cd.">?</span></label><input type="number" id="optGThr" min="0" step="50" value="100"></div>
           <div class="field"><label for="optNoise">Noise reduction <span class="hint" tabindex="0" data-tip="For simulated files with ray-trace noise. Each vertical scan is averaged over a small horizontal band (±0.15° or ±0.4°). Along the horizontal cut-off this removes noise without blurring the vertical profile. Photometric test points are never smoothed.">?</span></label>
             <select id="optNoise"><option value="none">None</option><option value="light">Light (H band ±0.15°)</option><option value="strong">Strong (H band ±0.4°)</option></select></div>
           <div class="field"><label for="optDet">Detector aperture <span class="hint" tabindex="0" data-tip="Averages the intensity over the photometer's acceptance disc, as at 10 m with Ø10 mm or 25 m with Ø30 mm. The sharpness checks always use both apertures.">?</span></label>
@@ -453,7 +453,7 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
       <ul class="notes" id="methodNotes">
         <li>Regulation basis: UN R149, 00 series (original version) as amended by its supplements. Photometric values for Class C from Table 9, Imax segment and cut-off position from Table 10 and Zone III from Table 11; for the symmetrical Classes CS and DS from Table 35 (with Zones 1 and 2); cut-off quality and instrumental aiming from Annex 6. Verify limits against your controlled copy of the 00 series, Supplement 6 before using the result for approval work.</li>
         <li>Angles: Type A/B files are read as screen angles (H right, V up). Type C files are mapped H = C-plane angle, V = γ − 90°. Use the axis options if the file uses another sign convention.</li>
-        <li>Gradient G = log I(β) − log I(β + 0.1°), evaluated on a 0.01° resampled vertical scan. For the scans the file is interpolated linearly in log I, so coarse grids (0.1°–0.2°) no longer inflate G; test points and zones still use linear interpolation in I. The cut-off is the inflection point (maximum G). A G value counts only where the darker of its two intensities is at or above the gradient intensity threshold (auto: 1 % of the scan maximum) and where the beam is bright 0.3° below. Optional noise reduction averages each scan over a small horizontal band. The page reports where the maximum was found, the two intensities, and the spread of G between 2° and 3° from V-V.</li>
+        <li>Gradient G = log I(β) − log I(β + 0.1°), evaluated on a 0.01° resampled vertical scan. For the scans the file is interpolated linearly in log I, so coarse grids (0.1°–0.2°) no longer inflate G; test points and zones still use linear interpolation in I. The cut-off is the inflection point (maximum G). A G value counts only where the darker of its two intensities is at or above the gradient intensity threshold in cd (default 100 cd, 0 = off) and where the beam is bright 0.3° below. Optional noise reduction averages each scan over a small horizontal band. The page reports where the maximum was found, the two intensities, and the spread of G between 2° and 3° from V-V.</li>
         <li>Minimum sharpness uses the better of the 10 m/Ø10 mm and 25 m/Ø30 mm detector apertures; maximum sharpness uses 25 m/Ø30 mm, as in Annex 6 §2. Simulation files on grids coarser than 0.05° give a biased G.</li>
         <li>Horizontal aim. Geometric kink: intersection of the horizontal part with a straight-line fit of the inclined part. Method (a): inflection on a horizontal scan at 0.2°D (after vertical aim) placed on V-V. Method (b): inflections on vertical scans at 1R, 2R, 3R, line through them, intersection with the cut-off line B placed on V-V. Methods (a) and (b) are what the applicant declares for instrumental aiming; for a 15° cut-off they put the geometric kink left of V-V.</li>
         <li>One lamp is evaluated with its full intensity. Footnote minima "each side ≥ 50 cd" (Class C) and the full point-2 minimum (CS/DS) are applied to this lamp. S50/S100 sums are evaluated without position lamps. LHT beams are mirrored and checked with L and R swapped.</li>
@@ -481,7 +481,7 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
  * Pure functions, no DOM. Works in browser (window.BCCore) and Node (module.exports).
  * Coordinate convention: H positive = right, V positive = up, degrees, 0/0 = lamp axis (HV).
  */
-(function (root) {
+function BCCoreFactory() {
   'use strict';
   const D2R = Math.PI / 180, R2D = 180 / Math.PI;
   const log10 = Math.log10;
@@ -489,26 +489,42 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
   /* ------------------------------------------------------------------ */
   /* IES LM-63 parser                                                    */
   /* ------------------------------------------------------------------ */
-  function parseIES(text) {
-    const lines = text.split(/\r?\n/);
-    const keywords = {};
-    let tiltIdx = -1;
-    const firstLine = (lines[0] || '').trim();
-    for (let i = 0; i < lines.length; i++) {
-      const ln = lines[i].trim();
-      const m = ln.match(/^\[([^\]]+)\]\s*(.*)$/);
-      if (m) {
-        const k = m[1].toUpperCase();
-        keywords[k] = keywords[k] ? keywords[k] + ' ' + m[2] : m[2];
-      }
-      if (/^TILT\s*=/i.test(ln)) { tiltIdx = i; break; }
+  // Reads all numbers from text[start…] into a Float64Array without building huge string arrays
+  // (a 30 MB IES file used to need several hundred MB of temporary strings).
+  function readNumbers(text, start) {
+    let cap = 1 << 16, out = new Float64Array(cap), n = 0;
+    const len = text.length; let i = start;
+    while (i < len) {
+      let c = text.charCodeAt(i);
+      if (c <= 32 || c === 44) { i++; continue; } // whitespace or comma
+      const s0 = i;
+      while (i < len) { c = text.charCodeAt(i); if (c <= 32 || c === 44) break; i++; }
+      if (n === cap) { const nb = new Float64Array(cap *= 2); nb.set(out); out = nb; }
+      out[n++] = +text.slice(s0, i);
     }
-    if (tiltIdx < 0) throw new Error('No "TILT=" line found. This does not look like an IES LM-63 file.');
-    const tilt = lines[tiltIdx].split('=').slice(1).join('=').trim().toUpperCase();
-    const tok = lines.slice(tiltIdx + 1).join(' ').trim().split(/[\s,]+/).filter(Boolean).map(Number);
+    return out.subarray(0, n);
+  }
+  function parseIES(text) {
+    if (typeof text !== 'string' || !text.length) throw new Error('The file is empty.');
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    const keywords = {};
+    let pos = 0, tiltLine = null, firstLine = null;
+    while (pos < text.length) { // header lines only, up to TILT=
+      let e = text.indexOf('\n', pos); if (e < 0) e = text.length;
+      const ln = text.slice(pos, e).replace(/\r$/, '').trim();
+      if (firstLine === null) firstLine = ln;
+      pos = e + 1;
+      const m = ln.match(/^\[([^\]]+)\]\s*(.*)$/);
+      if (m) { const k = m[1].toUpperCase(); keywords[k] = keywords[k] ? keywords[k] + ' ' + m[2] : m[2]; }
+      if (/^TILT\s*=/i.test(ln)) { tiltLine = ln; break; }
+      if (pos > 200000) break; // a real header is short
+    }
+    if (tiltLine === null) throw new Error('No "TILT=" line found. This does not look like an IES LM-63 file.');
+    const tilt = tiltLine.split('=').slice(1).join('=').trim().toUpperCase();
+    const tok = readNumbers(text, pos);
     let p = 0;
     if (tilt === 'INCLUDE') { p++; const n = tok[p++]; p += 2 * n; }
-    const need = (k) => { if (p + k > tok.length) throw new Error('IES file is truncated (not enough numeric values).'); };
+    const need = (k) => { if (!(p + k <= tok.length)) throw new Error('IES file is truncated (not enough numeric values).'); };
     need(13);
     const hdr = {
       nLamps: tok[p++], lumensPerLamp: tok[p++], multiplier: tok[p++],
@@ -518,11 +534,16 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
     };
     const { nV, nH } = hdr;
     if (!(nV > 1 && nH > 0)) throw new Error('Invalid number of angles in IES header.');
+    if (nV * nH > 40e6) throw new Error('The file has ' + nV + ' × ' + nH + ' values, too many to analyse in a browser.');
     need(nV + nH + nV * nH);
-    const vAng = Float64Array.from(tok.slice(p, p + nV)); p += nV;
-    const hAng = Float64Array.from(tok.slice(p, p + nH)); p += nH;
-    const cd = Float64Array.from(tok.slice(p, p + nV * nH)); p += nV * nH;
-    for (let i = 0; i < cd.length; i++) if (!isFinite(cd[i])) throw new Error('Non-numeric candela value in file.');
+    const vAng = tok.slice(p, p + nV); p += nV;
+    const hAng = tok.slice(p, p + nH); p += nH;
+    for (let i = 0; i < nV; i++) if (!isFinite(vAng[i])) throw new Error('Non-numeric vertical angle in file.');
+    for (let i = 0; i < nH; i++) if (!isFinite(hAng[i])) throw new Error('Non-numeric horizontal angle in file.');
+    const cd = tok.slice(p, p + nV * nH); p += nV * nH;
+    for (let i = 0; i < cd.length; i++) if (!isFinite(cd[i])) throw new Error('Non-numeric candela value in file (value ' + (i + 1) + ').');
+    if (hdr.multiplier == null || !isFinite(hdr.multiplier)) hdr.multiplier = 1;
+    if (hdr.ballast == null || !isFinite(hdr.ballast)) hdr.ballast = 1;
     return { format: firstLine, keywords, tilt, hdr, vAng, hAng, cd };
   }
 
@@ -541,7 +562,7 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
       notes.push('Type C file mapped to H/V: H = C-plane angle (−180…180), V = γ − 90°.');
       let planes = [];
       for (let j = 0; j < hAng.length; j++) planes.push({ c: hAng[j], vals: colOf(j) });
-      const cmax = Math.max(...hAng), cmin = Math.min(...hAng);
+      let cmax = -Infinity, cmin = Infinity; for (const x of hAng) { if (x > cmax) cmax = x; if (x < cmin) cmin = x; }
       if (hAng.length === 1) { planes.push({ c: 180, vals: planes[0].vals }); planes.push({ c: 360, vals: planes[0].vals }); notes.push('Rotationally symmetric Type C file.'); }
       else if (cmin === 0 && cmax <= 90) {
         const ext = [];
@@ -558,7 +579,7 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
     } else { // Type A / B : H-V photometry (taken directly as screen angles)
       if (hdr.photType !== 2 && hdr.photType !== 3) notes.push('Unknown photometric type ' + hdr.photType + ' — treated as H-V (Type B).');
       for (let j = 0; j < hAng.length; j++) cols.push({ h: hAng[j], vals: colOf(j) });
-      const hmin = Math.min(...hAng);
+      let hmin = Infinity; for (const x of hAng) if (x < hmin) hmin = x;
       if (hmin >= 0 && hAng.length > 1) {
         const mir = cols.filter(c => c.h > 0).map(c => ({ h: -c.h, vals: c.vals }));
         cols = cols.concat(mir);
@@ -733,7 +754,7 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
   function cutoffLine(f, h0, h1, step, win, gp) {
     const out = [];
     for (let h = h0; h <= h1 + 1e-9; h += step) {
-      const s = vscan(f, +h.toFixed(4), win[0], win[1], gp, 0.01);
+      const s = vscan(f, +h.toFixed(4), win[0], win[1], gp, 0.025);
       out.push({ h: +h.toFixed(4), v: s.v, G: s.G });
     }
     return out;
@@ -923,15 +944,15 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
   }
 
   function analyse(g, o) {
-    o = Object.assign({ traffic: 'auto', hMethod: 'geom', aimMode: 'full', target: -0.57, cls: 'C', detector: 'none', mountH: 0.65, dvExtra: 0, dhExtra: 0 }, o || {});
+    o = Object.assign({ traffic: 'auto', hMethod: 'geom', aimMode: 'full', target: -0.57, cls: 'C', detector: 'none', gThr: 100, mountH: 0.65, dvExtra: 0, dhExtra: 0 }, o || {});
     const f0 = makeSampler(g);                       // photometry (test points, zones): linear in I
     const floorCd = Math.max(1, 1e-4 * g.Imax);
     const fL = makeLogSampler(g, floorCd);            // cut-off scans and gradient: linear in log I
     const NOISE = { none: 0, light: 0.15, strong: 0.4 };
     const fLn = withHBand(fL, NOISE[o.noise] || 0);   // optional noise reduction (horizontal band average)
     const fRaw = withAperture(fLn, APERTURE[o.detector] || 0);
-    const thrIn = o.gThr;
-    const GP = { floor: floorCd, abs: (thrIn === '' || thrIn == null || thrIn === 'auto') ? null : Math.max(0, +thrIn), rel: 0.01 };
+    const thrNum = +o.gThr;
+    const GP = { floor: floorCd, abs: isFinite(thrNum) && thrNum > 0 ? thrNum : 0, rel: 0 }; // gradient intensity threshold, cd
     const vMin = g.V[0], vMax = g.V[g.nV - 1];
     const win = [Math.max(vMin + 0.1, -6), Math.min(vMax - 0.1, 4)];
     const warnings = [];
@@ -940,11 +961,14 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
     if (vMin > -4 || vMax < 4) warnings.push('V range is ' + vMin + '…' + vMax + '°. R149 test points need at least 4°D…4°U.');
 
     // 1. raw cut-off line (as measured)
-    const rawLine = cutoffLine(fRaw, -10, 10, 0.1, win, GP);
+    const sL = vscan(fRaw, -2.5, win[0], win[1], GP), sR = vscan(fRaw, 2.5, win[0], win[1], GP);
+    // the cut-off lines only need a band around the cut-off found at 2.5°L/R (much faster on big files)
+    const vs0 = [sL.v, sR.v].filter(isFinite);
+    const lineWin = vs0.length ? [Math.max(win[0], Math.min(...vs0) - 2), Math.min(win[1], Math.max(...vs0) + 2.5)] : win;
+    const rawLine = cutoffLine(fRaw, -10, 10, 0.1, lineWin, GP);
     const sel = (a, b) => rawLine.filter(p => p.h >= a - 1e-9 && p.h <= b + 1e-9 && p.G >= 0.08);
     const left = sel(-4, -1.5), right = sel(1.5, 4);
     const vLeft = median(left.map(p => p.v)), vRight = median(right.map(p => p.v));
-    const sL = vscan(fRaw, -2.5, win[0], win[1], GP), sR = vscan(fRaw, 2.5, win[0], win[1], GP);
     let type, traffic = null, kinkDir = null;
     const sharpL = left.length >= 6, sharpR = right.length >= 6;
     let delta = vRight - vLeft;
@@ -967,7 +991,8 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
     };
     res.fluxRaw = flux(g, 0);
     if (type === 'none') {
-      res.verdict = 'No distinct cut-off found (G < 0.08 on both sides). The file looks like a driving (high) beam or a beam without cut-off; low-beam cut-off analysis is not applicable.';
+      res.verdict = 'No distinct cut-off found (G < 0.08 on both sides). The file looks like a driving (high) beam or a beam without cut-off; low-beam cut-off analysis is not applicable.' +
+        (GP.abs > 0 ? ' The gradient intensity threshold is ' + GP.abs + ' cd: if it is higher than the intensity just above the cut-off, lower it under Advanced.' : '');
       return res;
     }
 
@@ -1024,7 +1049,7 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
     dv += o.dvExtra || 0;
 
     // canonical cut-off line
-    const cLine = cutoffLine(fc, -10, 10, 0.1, win, GP);
+    const cLine = cutoffLine(fc, -10, 10, 0.1, lineWin, GP);
     res.cLine = cLine;
 
     // 4. kink (asymmetric classes only)
@@ -1104,7 +1129,6 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
     res.cutoffAimed = vCut + dv;
 
     const fa = transformed(fcNoAp, 1, dh, dv); // aimed photometry without detector smoothing
-    res.sampleAimed = fa;
     const vBottom = Math.max(vMin + dv, -30);
 
     // 5. regulation check
@@ -1202,9 +1226,17 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
     return res;
   }
 
-  const api = { parseIES, buildGrid, makeSampler, makeLogSampler, transformed, vscan, hscan, analyse, classTable, regulationCheck, CUTOFF_RANGE, ZONE_IIIa, ZONE_1, SYM_CLASSES, flux, APERTURE };
-  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.BCCore = api;
-})(typeof window !== 'undefined' ? window : this);
+  // aimed photometry sampler for a result (results carry no functions, so they can come from a Web Worker)
+  function aimedSampler(g, res) { const f0 = makeSampler(g); return transformed(transformed(f0, res.mirror || 1, 0, 0), 1, res.aim.dh, res.aim.dv); }
+
+  const api = { aimedSampler, parseIES, buildGrid, makeSampler, makeLogSampler, transformed, vscan, hscan, analyse, classTable, regulationCheck, CUTOFF_RANGE, ZONE_IIIa, ZONE_1, SYM_CLASSES, flux, APERTURE };
+  return api;
+}
+(function () {
+  const api = BCCoreFactory();
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else if (typeof window !== 'undefined') { window.BCCore = api; window.BCCoreFactory = BCCoreFactory; }
+})();
 
 </script>
 <script>
@@ -1258,7 +1290,7 @@ function opts() {
     mountH: Math.max(0.1, parseFloat($('optMount').value) || 0.65),
     dvExtra: parseFloat($('optDv').value) || 0, dhExtra: parseFloat($('optDh').value) || 0,
     detector: $('optDet').value,
-    gThr: $('optGThr').value.trim() === '' ? 'auto' : $('optGThr').value, noise: $('optNoise').value
+    gThr: Math.max(0, parseFloat($('optGThr').value) || 0), noise: $('optNoise').value
   };
 }
 
@@ -1267,53 +1299,123 @@ function busy(on, t) { $('busy').hidden = !on; if (t) $('busyText').textContent 
 let toastT;
 function toast(t) { const el = $('toast'); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 3800); }
 
-/* ---------- loading ---------- */
-function loadText(text, name) {
-  setStatus('Reading file…'); busy(true, 'Reading ' + name + '…');
-  setTimeout(() => {
-    try {
-      state.ies = C.parseIES(text); state.name = name; state.isExample = false;
-      buildAndRun();
-    } catch (e) { busy(false); showError(e.message); }
-  }, 20);
+/* ---------- loading & analysis (runs in a Web Worker so the page never freezes) ---------- */
+const WORKER_SRC = '"use strict";const C=(' + BCCoreFactory.toString() + ')();let ies=null,grid=null;' +
+  'self.onmessage=function(e){var m=e.data;try{' +
+  'if(m.type==="load"){ies=C.parseIES(m.text);grid=C.buildGrid(ies,m.flips);var meta={format:ies.format,keywords:ies.keywords,tilt:ies.tilt,hdr:ies.hdr};self.postMessage({type:"loaded",id:m.id,grid:grid,meta:meta});}' +
+  'else if(m.type==="regrid"){grid=C.buildGrid(ies,m.flips);self.postMessage({type:"loaded",id:m.id,grid:grid});}' +
+  'else if(m.type==="setGrid"){grid=m.grid;ies=null;self.postMessage({type:"ok",id:m.id});}' +
+  'else if(m.type==="run"){var t0=performance.now();var res=C.analyse(grid,m.opts);self.postMessage({type:"result",id:m.id,res:res,ms:performance.now()-t0});}' +
+  '}catch(err){self.postMessage({type:"error",id:m.id,message:String(err&&err.message||err)});}};';
+const W = { w: null, seq: 0, pending: new Map(), seeded: null, url: null, loadSeq: 0, inFlight: false };
+function wCreate() {
+  try {
+    if (!W.url) W.url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' }));
+    const w = new Worker(W.url);
+    w.onmessage = (e) => { const m = e.data, p = W.pending.get(m.id); if (!p) return; W.pending.delete(m.id); if (m.type === 'error') p.reject(new Error(m.message)); else p.resolve(m); };
+    w.onerror = (e) => { e.preventDefault && e.preventDefault(); const err = new Error((e && e.message) || 'The analysis worker stopped (out of memory?)'); W.pending.forEach(p => p.reject(err)); W.pending.clear(); };
+    return w;
+  } catch (e) { return null; }
 }
-function loadExample(kind) {
+function wLocal(msg) { // same protocol on the main thread, used when Workers are not available
+  return new Promise((resolve, reject) => setTimeout(() => {
+    try {
+      if (msg.type === 'load') { W.ies = C.parseIES(msg.text); const g = C.buildGrid(W.ies, msg.flips); resolve({ grid: g, meta: { format: W.ies.format, keywords: W.ies.keywords, tilt: W.ies.tilt, hdr: W.ies.hdr } }); }
+      else if (msg.type === 'regrid') resolve({ grid: C.buildGrid(W.ies, msg.flips) });
+      else if (msg.type === 'setGrid') resolve({});
+      else if (msg.type === 'run') { const t0 = performance.now(); const res = C.analyse(state.grid, msg.opts); resolve({ res, ms: performance.now() - t0 }); }
+    } catch (e) { reject(e); }
+  }, 20));
+}
+function wCall(msg) {
+  if (!W.w) return wLocal(msg);
+  return new Promise((resolve, reject) => { const id = ++W.seq; W.pending.set(id, { resolve, reject }); W.w.postMessage(Object.assign({ id }, msg)); });
+}
+function wRestart() { // cancel a long analysis: drop the worker and start a fresh one with the same data
+  if (!W.w) return;
+  W.w.terminate(); const err = new Error('cancelled'); err.cancelled = true;
+  W.pending.forEach(p => p.reject(err)); W.pending.clear();
+  W.w = wCreate();
+  W.seeded = state.source ? wCall(state.source).catch(() => {}) : null;
+}
+W.w = wCreate();
+const flips = () => ({ flipV: $('optFlipV').checked, flipH: $('optFlipH').checked });
+
+async function loadText(text, name) {
+  setStatus('Reading file…'); busy(true, 'Reading ' + name + '…');
+  if (W.inFlight) wRestart();
+  const myLoad = ++W.loadSeq;
+  try {
+    const src = { type: 'load', text, flips: flips() };
+    W.seeded = wCall(src);
+    const m = await W.seeded;
+    if (myLoad !== W.loadSeq) return;
+    state.source = src; state.ies = m.meta; state.grid = m.grid; state.name = name; state.isExample = false;
+    run(true);
+  } catch (e) { if (!e.cancelled) { busy(false); showError(e.message, 'read'); } }
+}
+async function loadExample(kind) {
   state.ies = null; state.isExample = true; state.exampleKind = kind === 'sym' ? 'sym' : 'rht';
   state.name = state.exampleKind === 'sym' ? 'Built-in example: synthetic symmetrical low beam, flat cut-off (not a real lamp)' : 'Built-in example: synthetic RHT low beam, 15° kink (not a real lamp)';
-  buildAndRun();
+  if (W.inFlight) wRestart();
+  W.loadSeq++;
+  state.grid = state.exampleKind === 'sym' ? syntheticExample(SYM_EXAMPLE) : syntheticExample();
+  state.source = { type: 'setGrid', grid: state.grid };
+  W.seeded = wCall(state.source).catch(() => {});
+  run(true);
 }
-function buildAndRun() {
+async function buildAndRun() { // axis options changed
+  if (state.isExample || !state.source) return;
+  if (W.inFlight) wRestart();
   try {
-    if (state.isExample) state.grid = state.exampleKind === 'sym' ? syntheticExample(SYM_EXAMPLE) : syntheticExample();
-    else state.grid = C.buildGrid(state.ies, { flipV: $('optFlipV').checked, flipH: $('optFlipH').checked });
-    run();
-  } catch (e) { busy(false); showError(e.message); }
+    busy(true, 'Rebuilding the grid…');
+    state.source = { type: 'load', text: state.source.text, flips: flips() };
+    if (W.w) { await W.seeded; const m = await wCall({ type: 'regrid', flips: flips() }); state.grid = m.grid; }
+    else { const m = await wLocal({ type: 'regrid', flips: flips() }); state.grid = m.grid; }
+    run(true);
+  } catch (e) { if (!e.cancelled) { busy(false); showError(e.message, 'read'); } }
 }
-function run() {
+let runTimer = null, runToken = 0;
+function run(now) { // debounced: rapid setting changes start only one analysis
+  clearTimeout(runTimer);
   setStatus('Analysing…'); busy(true, 'Analysing…');
-  setTimeout(() => {
-    try {
-      const t0 = performance.now();
-      state.res = C.analyse(state.grid, opts());
-      render();
-      setStatus('Analysed in ' + Math.round(performance.now() - t0) + ' ms');
-    } catch (e) { console.error(e); showError('Analysis failed: ' + e.message); }
-    busy(false);
-  }, 20);
+  runTimer = setTimeout(runNow, now ? 0 : 250);
 }
-function showError(msg) {
-  busy(false); toast('Could not read the file.');
-  $('banners').innerHTML = '<div class="banner bad"><strong>Could not read the file.</strong> ' + esc(msg) + ' Check that it is an IES LM-63 file with H-V (Type A/B) or Type C photometry.</div>';
+async function runNow() {
+  if (!state.grid) return;
+  if (W.inFlight) wRestart(); // a newer request replaces a running one
+  const my = ++runToken;
+  W.inFlight = true;
+  try {
+    if (W.seeded) await W.seeded;
+    const m = await wCall({ type: 'run', opts: opts() });
+    if (my !== runToken) return;
+    state.res = m.res;
+    try { render(); }
+    catch (e) { console.error(e); showError('The result could not be displayed: ' + e.message + '. Please report this with the IES file.', 'render'); }
+    setStatus('Analysed in ' + Math.round(m.ms) + ' ms');
+  } catch (e) {
+    if (e.cancelled || my !== runToken) return;
+    console.error(e); showError(e.message, 'analyse');
+  } finally {
+    if (my === runToken) { W.inFlight = false; busy(false); }
+  }
+}
+function showError(msg, stage) {
+  busy(false);
+  const title = stage === 'analyse' ? 'The analysis failed.' : stage === 'render' ? 'Display error.' : 'Could not read the file.';
+  toast(title);
+  const tail = stage === 'read' || !stage ? ' Check that it is an IES LM-63 file with H-V (Type A/B) or Type C photometry.' : '';
+  $('banners').innerHTML = '<div class="banner bad"><strong>' + title + '</strong> ' + esc(msg) + tail + '</div>';
   setStatus('Error');
 }
 
 const drop = $('drop'), fileIn = $('file');
 drop.addEventListener('click', () => fileIn.click());
 drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileIn.click(); } });
-fileIn.addEventListener('change', () => { const f = fileIn.files[0]; if (f) readFile(f); });
+fileIn.addEventListener('change', () => { const f = fileIn.files[0]; if (f) readFile(f); fileIn.value = ''; });
 ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
-drop.addEventListener('drop', (e) => { const f = e.dataTransfer.files[0]; if (f) readFile(f); });
 document.addEventListener('dragover', (e) => e.preventDefault());
 document.addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) readFile(f); });
 function readFile(f) { const r = new FileReader(); r.onload = () => loadText(r.result, f.name); r.onerror = () => showError('The browser could not read the file.'); r.readAsText(f); }
@@ -1478,7 +1580,7 @@ function renderCutTable() {
   if (r.gDetail) {
     const gd = r.gDetail.grid, sd2 = m === -1 ? 'R' : 'L';
     if (gd.at) kv.push(['G at 2.5°' + sd2 + ' (file grid) between', angV(gd.at.vBright) + ' ' + fmt(gd.at.IBright) + ' cd → ' + angV(gd.at.vDark) + ' ' + fmt(gd.at.IDark) + ' cd']);
-    kv.push(['Gradient intensity threshold', fmt(gd.thr) + ' cd' + (r.gDetail.thrAbs == null ? ' (auto, 1 % of scan max)' : r.gDetail.thrAbs === 0 ? ' (off)' : ' (set)')]);
+    kv.push(['Gradient intensity threshold', r.gDetail.thrAbs > 0 ? fmt(r.gDetail.thrAbs) + ' cd' : 'off']);
     if (r.gSpread) kv.push(['G between 2° and 3°' + sd2 + ' (min / median / max)', [r.gSpread.min, r.gSpread.median, r.gSpread.max].map(x => fmt(x, 3)).join(' / ')]);
     kv.push(['Noise reduction', ({ none: 'none', light: 'light, H band ±0.15°', strong: 'strong, H band ±0.4°' })[r.options.noise || 'none']]);
   }
@@ -1612,7 +1714,9 @@ function drawMap(tgt) {
   const m = r.mirror || 1;
   const aimed = state.view === 'aimed' && r.type !== 'none';
   const f0 = C.makeSampler(state.grid);
-  const f = aimed ? ((hd, v) => r.sampleAimed(m * hd, v)) : f0;
+  if (aimed && (!state.faFor || state.faFor !== r)) { state.fa = C.aimedSampler(state.grid, r); state.faFor = r; }
+  const fa = state.fa;
+  const f = aimed ? ((hd, v) => fa(m * hd, v)) : f0;
   if (on) state.mapF = f;
   // raster
   const nx = Math.min(500, Math.round(pw)), ny = Math.min(280, Math.round(ph));
@@ -1895,7 +1999,7 @@ function buildModelInner() {
     ['Cut-off target', fmt(Math.abs(o.target), 2) + '°D'],
     ['Extra shift (V / H)', fmt(o.dvExtra, 2) + '° / ' + fmt(o.dhExtra, 2) + '°'],
     ['Detector aperture (cut-off line)', $('optDet').selectedOptions[0].textContent],
-    ['Gradient intensity threshold', o.gThr === 'auto' ? 'auto (1 % of scan max)' : fmt(+o.gThr) + ' cd'],
+    ['Gradient intensity threshold', +o.gThr > 0 ? fmt(+o.gThr) + ' cd' : 'off'],
     ['Noise reduction', $('optNoise').selectedOptions[0].textContent],
     ['Mounting height', fmt(o.mountH, 2) + ' m']
   ];
