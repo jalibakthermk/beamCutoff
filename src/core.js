@@ -145,6 +145,19 @@
     };
   }
 
+  /* Same grid, interpolated linearly in log10(I). Used for the cut-off scans: on coarse grids linear-in-I
+     interpolation bends the log profile between grid points and inflates G near the dark end of a cell. */
+  function makeLogSampler(g, floor) {
+    const lh = axisLocator(g.H), lv = axisLocator(g.V), nV = g.nV, Lg = new Float32Array(g.I.length);
+    for (let i = 0; i < Lg.length; i++) Lg[i] = Math.log10(Math.max(g.I[i], floor));
+    return function (h, v) {
+      const a = lh(h); if (!a) return 0; const b = lv(v); if (!b) return 0;
+      const j = a[0], tj = a[1], i = b[0], ti = b[1], k = j * nV + i;
+      const l = (1 - tj) * ((1 - ti) * Lg[k] + ti * Lg[k + 1]) + tj * ((1 - ti) * Lg[k + nV] + ti * Lg[k + nV + 1]);
+      return Math.pow(10, l);
+    };
+  }
+
   /* transform: canonical/aimed frame -> raw.  mirror m=±1, shifts dh,dv applied to the beam */
   function transformed(f, m, dh, dv) { return (h, v) => f(m * (h - dh), v - dv); }
 
@@ -158,71 +171,90 @@
     return (h, v) => { let s = 0; for (const p of pts) s += f(h + p[0], v + p[1]); return s / wsum; };
   }
 
+  /* noise reduction for simulated files: average intensity over a horizontal band h ± half (7 samples).
+     Along the horizontal part of the cut-off this removes ray-trace noise without blurring the vertical profile. */
+  function withHBand(f, half) {
+    if (!half) return f;
+    const n = 7, offs = Array.from({ length: n }, (_, i) => -half + 2 * half * i / (n - 1));
+    return (h, v) => { let s = 0; for (const d of offs) s += f(h + d, v); return s / n; };
+  }
+
   /* ------------------------------------------------------------------ */
   /* Scans & gradient (R149 Annex 6 style: G = log I(β) − log I(β+0.1°)) */
   /* ------------------------------------------------------------------ */
+  // Gradient options: gp = { floor, abs, rel }. A gradient sample counts only when the DARKER of its two
+  // intensities is at or above the threshold: abs (cd) if given, otherwise rel × the scan maximum.
+  // This keeps noisy low values above the cut-off from producing false maxima of G.
+  function gpOf(gp) { return typeof gp === 'number' ? { floor: gp, abs: 0, rel: 0 } : gp; }
+  function thrOf(gp, imax) { return gp.abs != null ? gp.abs : (gp.rel || 0) * imax; }
   // vertical scan at fixed h. Gradient positive where it is brighter BELOW.
-  function vscan(f, h, v0, v1, floorCd, step) {
-    step = step || 0.01;
+  // G(v) = log I(v − 0.05°) − log I(v + 0.05°)  (= log I(β) − log I(β + 0.1°) with β measured downward)
+  function vscan(f, h, v0, v1, gp, step) {
+    gp = gpOf(gp); step = step || 0.01;
     const n = Math.max(3, Math.round((v1 - v0) / step) + 1);
     const vs = new Float64Array(n), Is = new Float64Array(n), L = new Float64Array(n);
     let imax = 0;
-    for (let k = 0; k < n; k++) { const v = v0 + k * step; vs[k] = v; const x = f(h, v); Is[k] = x; if (x > imax) imax = x; L[k] = log10(Math.max(x, floorCd)); }
+    for (let k = 0; k < n; k++) { const v = v0 + k * step; vs[k] = v; const x = f(h, v); Is[k] = x; if (x > imax) imax = x; L[k] = log10(Math.max(x, gp.floor)); }
     const half = Math.round(0.05 / step), below = Math.round(0.3 / step);
+    const thr = thrOf(gp, imax);
     const G = new Float64Array(n).fill(NaN);
     let best = -1, bestG = -Infinity;
     for (let k = half; k < n - half; k++) {
+      if (Is[k + half] < thr) continue; // darker sample below the intensity threshold
       const g = L[k - half] - L[k + half];
       G[k] = g;
       const kb = Math.max(0, k - below);
       if (Is[kb] < 0.05 * imax) continue; // must have a bright zone below the transition
       if (g > bestG) { bestG = g; best = k; }
     }
-    if (best < 0) return { v: NaN, G: 0, vs, Is, Gs: G, peaks: [] };
+    if (best < 0) return { v: NaN, G: 0, vs, Is, Gs: G, peaks: [], thr };
     let vPk = vs[best];
-    if (best > half && best < n - half - 1) { // parabolic refinement
+    if (best > half && best < n - half - 1 && isFinite(G[best - 1]) && isFinite(G[best + 1])) { // parabolic refinement
       const a = G[best - 1], b = G[best], c = G[best + 1], den = a - 2 * b + c;
       if (den < 0) vPk += step * 0.5 * (a - c) / den;
     }
+    const at = { vBright: vs[best - half], vDark: vs[best + half], IBright: Is[best - half], IDark: Is[best + half] };
     // secondary peaks (for "only one cut-off" check)
     const peaks = [];
     for (let k = half + 1; k < n - half - 1; k++) {
-      if (!(G[k] >= 0.08 && G[k] >= G[k - 1] && G[k] > G[k + 1])) continue;
+      if (!(G[k] >= 0.08 && G[k] >= (isFinite(G[k - 1]) ? G[k - 1] : -1) && G[k] > (isFinite(G[k + 1]) ? G[k + 1] : -1))) continue;
       const kb = Math.max(0, k - below); if (Is[kb] < 0.05 * imax) continue;
       peaks.push({ v: vs[k], G: G[k] });
     }
     // merge peaks closer than 0.3°
     const merged = [];
     peaks.sort((a, b) => b.G - a.G).forEach(p => { if (!merged.some(q => Math.abs(q.v - p.v) < 0.3)) merged.push(p); });
-    return { v: vPk, G: bestG, vs, Is, Gs: G, peaks: merged };
+    return { v: vPk, G: bestG, vs, Is, Gs: G, peaks: merged, thr, at };
   }
   // horizontal scan at fixed v. Gradient positive where it is brighter to the RIGHT.
-  function hscan(f, v, h0, h1, floorCd, step) {
-    step = step || 0.01;
+  function hscan(f, v, h0, h1, gp, step) {
+    gp = gpOf(gp); step = step || 0.01;
     const n = Math.max(3, Math.round((h1 - h0) / step) + 1);
     const hs = new Float64Array(n), Is = new Float64Array(n), L = new Float64Array(n);
     let imax = 0;
-    for (let k = 0; k < n; k++) { const h = h0 + k * step; hs[k] = h; const x = f(h, v); Is[k] = x; if (x > imax) imax = x; L[k] = log10(Math.max(x, floorCd)); }
+    for (let k = 0; k < n; k++) { const h = h0 + k * step; hs[k] = h; const x = f(h, v); Is[k] = x; if (x > imax) imax = x; L[k] = log10(Math.max(x, gp.floor)); }
     const half = Math.round(0.05 / step), side = Math.round(0.3 / step);
+    const thr = thrOf(gp, imax);
     const G = new Float64Array(n).fill(NaN);
     let best = -1, bestG = -Infinity;
     for (let k = half; k < n - half; k++) {
+      if (Is[k - half] < thr) continue;
       const g = L[k + half] - L[k - half]; G[k] = g;
       const kr = Math.min(n - 1, k + side); if (Is[kr] < 0.05 * imax) continue;
       if (g > bestG) { bestG = g; best = k; }
     }
-    if (best < 0) return { h: NaN, G: 0, hs, Is, Gs: G };
+    if (best < 0) return { h: NaN, G: 0, hs, Is, Gs: G, thr };
     let hPk = hs[best];
-    if (best > half && best < n - half - 1) { const a = G[best - 1], b = G[best], c = G[best + 1], den = a - 2 * b + c; if (den < 0) hPk += step * 0.5 * (a - c) / den; }
-    return { h: hPk, G: bestG, hs, Is, Gs: G };
+    if (best > half && best < n - half - 1 && isFinite(G[best - 1]) && isFinite(G[best + 1])) { const a = G[best - 1], b = G[best], c = G[best + 1], den = a - 2 * b + c; if (den < 0) hPk += step * 0.5 * (a - c) / den; }
+    return { h: hPk, G: bestG, hs, Is, Gs: G, thr };
   }
 
   function median(a) { const b = a.filter(x => isFinite(x)).sort((x, y) => x - y); if (!b.length) return NaN; const m = b.length >> 1; return b.length % 2 ? b[m] : 0.5 * (b[m - 1] + b[m]); }
 
-  function cutoffLine(f, h0, h1, step, win, floorCd) {
+  function cutoffLine(f, h0, h1, step, win, gp) {
     const out = [];
     for (let h = h0; h <= h1 + 1e-9; h += step) {
-      const s = vscan(f, +h.toFixed(4), win[0], win[1], floorCd, 0.01);
+      const s = vscan(f, +h.toFixed(4), win[0], win[1], gp, 0.01);
       out.push({ h: +h.toFixed(4), v: s.v, G: s.G });
     }
     return out;
@@ -413,9 +445,14 @@
 
   function analyse(g, o) {
     o = Object.assign({ traffic: 'auto', hMethod: 'geom', aimMode: 'full', target: -0.57, cls: 'C', detector: 'none', mountH: 0.65, dvExtra: 0, dhExtra: 0 }, o || {});
-    const f0 = makeSampler(g);
-    const fRaw = withAperture(f0, APERTURE[o.detector] || 0);
+    const f0 = makeSampler(g);                       // photometry (test points, zones): linear in I
     const floorCd = Math.max(1, 1e-4 * g.Imax);
+    const fL = makeLogSampler(g, floorCd);            // cut-off scans and gradient: linear in log I
+    const NOISE = { none: 0, light: 0.15, strong: 0.4 };
+    const fLn = withHBand(fL, NOISE[o.noise] || 0);   // optional noise reduction (horizontal band average)
+    const fRaw = withAperture(fLn, APERTURE[o.detector] || 0);
+    const thrIn = o.gThr;
+    const GP = { floor: floorCd, abs: (thrIn === '' || thrIn == null || thrIn === 'auto') ? null : Math.max(0, +thrIn), rel: 0.01 };
     const vMin = g.V[0], vMax = g.V[g.nV - 1];
     const win = [Math.max(vMin + 0.1, -6), Math.min(vMax - 0.1, 4)];
     const warnings = [];
@@ -424,11 +461,11 @@
     if (vMin > -4 || vMax < 4) warnings.push('V range is ' + vMin + '…' + vMax + '°. R149 test points need at least 4°D…4°U.');
 
     // 1. raw cut-off line (as measured)
-    const rawLine = cutoffLine(fRaw, -10, 10, 0.1, win, floorCd);
+    const rawLine = cutoffLine(fRaw, -10, 10, 0.1, win, GP);
     const sel = (a, b) => rawLine.filter(p => p.h >= a - 1e-9 && p.h <= b + 1e-9 && p.G >= 0.08);
     const left = sel(-4, -1.5), right = sel(1.5, 4);
     const vLeft = median(left.map(p => p.v)), vRight = median(right.map(p => p.v));
-    const sL = vscan(fRaw, -2.5, win[0], win[1], floorCd), sR = vscan(fRaw, 2.5, win[0], win[1], floorCd);
+    const sL = vscan(fRaw, -2.5, win[0], win[1], GP), sR = vscan(fRaw, 2.5, win[0], win[1], GP);
     let type, traffic = null, kinkDir = null;
     const sharpL = left.length >= 6, sharpR = right.length >= 6;
     let delta = vRight - vLeft;
@@ -466,11 +503,11 @@
     const fcNoAp = transformed(f0, m, 0, 0);
 
     // horizontal-part scans at 1.5/2.5/3.5 (L in canonical frame). For symmetric beams also R side.
-    const s25 = vscan(fc, -2.5, win[0], win[1], floorCd), s15 = vscan(fc, -1.5, win[0], win[1], floorCd), s35 = vscan(fc, -3.5, win[0], win[1], floorCd);
+    const s25 = vscan(fc, -2.5, win[0], win[1], GP), s15 = vscan(fc, -1.5, win[0], win[1], GP), s35 = vscan(fc, -3.5, win[0], win[1], GP);
     let vCut = s25.v;
     res.cutRef = (m === -1 ? '2.5°R' : '2.5°L');
     if (symCls) { // symmetrical procedure: inflection on V-V is the aiming reference
-      const sV = vscan(fc, 0, win[0], win[1], floorCd), s3L = vscan(fc, -3, win[0], win[1], floorCd), s3R = vscan(fc, 3, win[0], win[1], floorCd);
+      const sV = vscan(fc, 0, win[0], win[1], GP), s3L = vscan(fc, -3, win[0], win[1], GP), s3R = vscan(fc, 3, win[0], win[1], GP);
       res.scanV = sV; res.scan3L = s3L; res.scan3R = s3R;
       if (isFinite(sV.v) && sV.G >= 0.05) { vCut = sV.v; res.cutRef = 'V-V'; }
       else { warnings.push('No clear cut-off on V-V; the 2.5°L scan was used for vertical aim.'); }
@@ -481,15 +518,24 @@
     res.G25 = s25.G;
     // sharpness with the regulation's detector apertures (Annex 6 §2): 10 m / Ø10 mm and 25 m / Ø30 mm
     const sideX = -2.5;
-    res.G_10m = vscan(transformed(withAperture(f0, APERTURE['10m']), m, 0, 0), sideX, win[0], win[1], floorCd, 0.01).G;
-    res.G_25m = vscan(transformed(withAperture(f0, APERTURE['25m']), m, 0, 0), sideX, win[0], win[1], floorCd, 0.01).G;
-    res.G_grid = vscan(fcNoAp, sideX, win[0], win[1], floorCd, 0.01).G;
+    const g10 = vscan(transformed(withAperture(fLn, APERTURE['10m']), m, 0, 0), sideX, win[0], win[1], GP, 0.01);
+    res.G_10m = g10.G;
+    const g25 = vscan(transformed(withAperture(fLn, APERTURE['25m']), m, 0, 0), sideX, win[0], win[1], GP, 0.01);
+    res.G_25m = g25.G;
+    const gGrid = vscan(transformed(fLn, m, 0, 0), sideX, win[0], win[1], GP, 0.01);
+    res.G_grid = gGrid.G;
+    res.gDetail = { grid: gGrid, d10: g10, d25: g25, thrAbs: GP.abs, thrRel: GP.rel };
+    { // scatter of G across 2.0…3.0° on the horizontal part (shows noise / local variation)
+      const xs = [-3, -2.75, -2.5, -2.25, -2], gs = xs.map(x => vscan(transformed(fLn, m, 0, 0), x, win[0], win[1], GP, 0.01).G).filter(isFinite);
+      res.gSpread = { min: Math.min(...gs), max: Math.max(...gs), median: median(gs), n: gs.length };
+      if (res.gSpread.max - res.gSpread.min > 0.06) warnings.push('G varies from ' + res.gSpread.min.toFixed(3) + ' to ' + res.gSpread.max.toFixed(3) + ' between 2° and 3° from V-V. The file is probably noisy; try Noise reduction or a higher gradient intensity threshold under Advanced.');
+    }
     res.nCutoffs = s25.peaks.length;
     if (type === 'sym' || symCls) {
-      const s25r = vscan(fc, 2.5, win[0], win[1], floorCd);
+      const s25r = vscan(fc, 2.5, win[0], win[1], GP);
       res.scan25R = s25r; res.G25R = s25r.G;
-      res.G_10mR = vscan(transformed(withAperture(f0, APERTURE['10m']), m, 0, 0), 2.5, win[0], win[1], floorCd, 0.01).G;
-      res.G_25mR = vscan(transformed(withAperture(f0, APERTURE['25m']), m, 0, 0), 2.5, win[0], win[1], floorCd, 0.01).G;
+      res.G_10mR = vscan(transformed(withAperture(fLn, APERTURE['10m']), m, 0, 0), 2.5, win[0], win[1], GP, 0.01).G;
+      res.G_25mR = vscan(transformed(withAperture(fLn, APERTURE['25m']), m, 0, 0), 2.5, win[0], win[1], GP, 0.01).G;
       res.nCutoffs = Math.max(res.nCutoffs, s25r.peaks.length);
     }
 
@@ -499,7 +545,7 @@
     dv += o.dvExtra || 0;
 
     // canonical cut-off line
-    const cLine = cutoffLine(fc, -10, 10, 0.1, win, floorCd);
+    const cLine = cutoffLine(fc, -10, 10, 0.1, win, GP);
     res.cLine = cLine;
 
     // 4. kink (asymmetric classes only)
@@ -534,7 +580,7 @@
         let dh0 = -geom.h, out = null;
         for (let it = 0; it < 3; it++) {
           const fa0 = transformed(fc, 1, dh0, dvA);
-          const hs = hscan(fa0, -0.2, -5, 5, floorCd);
+          const hs = hscan(fa0, -0.2, -5, 5, GP);
           out = { h: hs.h - dh0, G: hs.G, scan: hs };
           if (!isFinite(out.h)) break; dh0 = -out.h;
         }
@@ -544,7 +590,7 @@
         let dh0 = -geom.h, out = null;
         for (let it = 0; it < 3; it++) {
           const fa0 = transformed(fc, 1, dh0, dvA);
-          const pts = [1, 2, 3].map(x => { const s = vscan(fa0, x, -2, 2, floorCd); return { h: x, v: s.v, G: s.G }; });
+          const pts = [1, 2, 3].map(x => { const s = vscan(fa0, x, -2, 2, GP); return { h: x, v: s.v, G: s.G }; });
           const ok = pts.filter(p => isFinite(p.v) && p.G >= 0.05);
           out = { h: NaN, G: ok.length ? Math.min(...ok.map(p => p.G)) : 0, pts, valid: false };
           if (ok.length < 3) { out.reason = 'no cut-off found on all three lines'; break; }
@@ -677,6 +723,6 @@
     return res;
   }
 
-  const api = { parseIES, buildGrid, makeSampler, transformed, vscan, hscan, analyse, classTable, regulationCheck, CUTOFF_RANGE, ZONE_IIIa, ZONE_1, SYM_CLASSES, flux, APERTURE };
+  const api = { parseIES, buildGrid, makeSampler, makeLogSampler, transformed, vscan, hscan, analyse, classTable, regulationCheck, CUTOFF_RANGE, ZONE_IIIa, ZONE_1, SYM_CLASSES, flux, APERTURE };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.BCCore = api;
 })(typeof window !== 'undefined' ? window : this);

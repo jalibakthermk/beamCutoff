@@ -352,7 +352,10 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
             <div class="field"><label for="optDv">Vertical (°, + up)</label><input type="number" id="optDv" value="0" step="0.05"></div>
             <div class="field"><label for="optDh">Horizontal (°, + right)</label><input type="number" id="optDh" value="0" step="0.05"></div>
           </div>
-          <div class="sub-h">Cut-off line</div>
+          <div class="sub-h">Cut-off gradient</div>
+          <div class="field"><label for="optGThr">Intensity threshold (cd) <span class="hint" tabindex="0" data-tip="A gradient value G = log I(β) − log I(β + 0.1°) is used only where the darker of its two intensities is at least this value. This stops noisy low intensities above the cut-off from giving false maxima. Empty: auto (1 % of the scan maximum). 0: off.">?</span></label><input type="number" id="optGThr" min="0" step="10" placeholder="auto (1 % of scan max)"></div>
+          <div class="field"><label for="optNoise">Noise reduction <span class="hint" tabindex="0" data-tip="For simulated files with ray-trace noise. Each vertical scan is averaged over a small horizontal band (±0.15° or ±0.4°). Along the horizontal cut-off this removes noise without blurring the vertical profile. Photometric test points are never smoothed.">?</span></label>
+            <select id="optNoise"><option value="none">None</option><option value="light">Light (H band ±0.15°)</option><option value="strong">Strong (H band ±0.4°)</option></select></div>
           <div class="field"><label for="optDet">Detector aperture <span class="hint" tabindex="0" data-tip="Averages the intensity over the photometer's acceptance disc, as at 10 m with Ø10 mm or 25 m with Ø30 mm. The sharpness checks always use both apertures.">?</span></label>
             <select id="optDet"><option value="none">None (file grid)</option><option value="10m">10 m, Ø10 mm</option><option value="25m">25 m, Ø30 mm</option></select></div>
           <div class="sub-h">Road</div>
@@ -450,7 +453,7 @@ footer.app-foot .disc { flex-basis: 100%; font-size: 12px; color: var(--cds-text
       <ul class="notes" id="methodNotes">
         <li>Regulation basis: UN R149, 00 series (original version) as amended by its supplements. Photometric values for Class C from Table 9, Imax segment and cut-off position from Table 10 and Zone III from Table 11; for the symmetrical Classes CS and DS from Table 35 (with Zones 1 and 2); cut-off quality and instrumental aiming from Annex 6. Verify limits against your controlled copy of the 00 series, Supplement 6 before using the result for approval work.</li>
         <li>Angles: Type A/B files are read as screen angles (H right, V up). Type C files are mapped H = C-plane angle, V = γ − 90°. Use the axis options if the file uses another sign convention.</li>
-        <li>Gradient G = log I(β) − log I(β + 0.1°), evaluated on a 0.01° resampled scan of the bilinear-interpolated file. The cut-off is the inflection point (maximum G). Only transitions with a bright zone below are counted.</li>
+        <li>Gradient G = log I(β) − log I(β + 0.1°), evaluated on a 0.01° resampled vertical scan. For the scans the file is interpolated linearly in log I, so coarse grids (0.1°–0.2°) no longer inflate G; test points and zones still use linear interpolation in I. The cut-off is the inflection point (maximum G). A G value counts only where the darker of its two intensities is at or above the gradient intensity threshold (auto: 1 % of the scan maximum) and where the beam is bright 0.3° below. Optional noise reduction averages each scan over a small horizontal band. The page reports where the maximum was found, the two intensities, and the spread of G between 2° and 3° from V-V.</li>
         <li>Minimum sharpness uses the better of the 10 m/Ø10 mm and 25 m/Ø30 mm detector apertures; maximum sharpness uses 25 m/Ø30 mm, as in Annex 6 §2. Simulation files on grids coarser than 0.05° give a biased G.</li>
         <li>Horizontal aim. Geometric kink: intersection of the horizontal part with a straight-line fit of the inclined part. Method (a): inflection on a horizontal scan at 0.2°D (after vertical aim) placed on V-V. Method (b): inflections on vertical scans at 1R, 2R, 3R, line through them, intersection with the cut-off line B placed on V-V. Methods (a) and (b) are what the applicant declares for instrumental aiming; for a 15° cut-off they put the geometric kink left of V-V.</li>
         <li>One lamp is evaluated with its full intensity. Footnote minima "each side ≥ 50 cd" (Class C) and the full point-2 minimum (CS/DS) are applied to this lamp. S50/S100 sums are evaluated without position lamps. LHT beams are mirrored and checked with L and R swapped.</li>
@@ -499,7 +502,8 @@ function opts() {
     target: -Math.abs(parseFloat($('optTarget').value) || 0.57),
     mountH: Math.max(0.1, parseFloat($('optMount').value) || 0.65),
     dvExtra: parseFloat($('optDv').value) || 0, dhExtra: parseFloat($('optDh').value) || 0,
-    detector: $('optDet').value
+    detector: $('optDet').value,
+    gThr: $('optGThr').value.trim() === '' ? 'auto' : $('optGThr').value, noise: $('optNoise').value
   };
 }
 
@@ -561,7 +565,7 @@ function readFile(f) { const r = new FileReader(); r.onload = () => loadText(r.r
 $('btnExample').addEventListener('click', () => loadExample('rht'));
 $('btnExampleSym').addEventListener('click', () => loadExample('sym'));
 ['optFlipV', 'optFlipH'].forEach(id => $(id).addEventListener('change', () => { if (!state.isExample && state.ies) buildAndRun(); }));
-['optClass', 'optTraffic', 'optAim', 'optHMethod', 'optTarget', 'optMount', 'optDv', 'optDh', 'optDet'].forEach(id => $(id).addEventListener('change', () => { if (state.grid) run(); }));
+['optGThr', 'optNoise', 'optClass', 'optTraffic', 'optAim', 'optHMethod', 'optTarget', 'optMount', 'optDv', 'optDh', 'optDet'].forEach(id => $(id).addEventListener('change', () => { if (state.grid) run(); }));
 $('viewAimed').addEventListener('click', () => { state.view = 'aimed'; $('viewAimed').setAttribute('aria-pressed', 'true'); $('viewRaw').setAttribute('aria-pressed', 'false'); drawMap(); });
 $('viewRaw').addEventListener('click', () => { state.view = 'raw'; $('viewRaw').setAttribute('aria-pressed', 'true'); $('viewAimed').setAttribute('aria-pressed', 'false'); drawMap(); });
 window.addEventListener('resize', () => { if (state.res) { clearTimeout(window.__rz); window.__rz = setTimeout(drawCharts, 150); } });
@@ -716,6 +720,13 @@ function renderCutTable() {
   const m = r.mirror || 1;
   const kv = [];
   kv.push(['Cut-off in file at 1.5° / 2.5° / 3.5°' + (m === -1 ? 'R' : 'L'), [r.scan15.v, r.scan25.v, r.scan35.v].map(v => fmt(v, 3)).join(' / ') + '°']);
+  if (r.gDetail) {
+    const gd = r.gDetail.grid, sd2 = m === -1 ? 'R' : 'L';
+    if (gd.at) kv.push(['G at 2.5°' + sd2 + ' (file grid) between', angV(gd.at.vBright) + ' ' + fmt(gd.at.IBright) + ' cd → ' + angV(gd.at.vDark) + ' ' + fmt(gd.at.IDark) + ' cd']);
+    kv.push(['Gradient intensity threshold', fmt(gd.thr) + ' cd' + (r.gDetail.thrAbs == null ? ' (auto, 1 % of scan max)' : r.gDetail.thrAbs === 0 ? ' (off)' : ' (set)')]);
+    if (r.gSpread) kv.push(['G between 2° and 3°' + sd2 + ' (min / median / max)', [r.gSpread.min, r.gSpread.median, r.gSpread.max].map(x => fmt(x, 3)).join(' / ')]);
+    kv.push(['Noise reduction', ({ none: 'none', light: 'light, H band ±0.15°', strong: 'strong, H band ±0.4°' })[r.options.noise || 'none']]);
+  }
   if (r.symClass) kv.push(['Cut-off in file at 3°L / V-V / 3°R', [r.scan3L.v, r.scanV.v, r.scan3R.v].map(v => fmt(v, 3)).join(' / ') + '°']);
   kv.push(['Vertical aim applied', fmt(r.aim.dv, 3) + '° (reference ' + r.cutRef + ')']);
   if (r.hasKink) {
@@ -1009,13 +1020,13 @@ function drawVScan(tgt) {
     x: { min: x0, max: x1, ticks: ticksX, label: 'V in file (°, + up)', fmt: t => t.toFixed(1) },
     y: { min: Math.max(1, ymax / 1e4), max: ymax, log: true, ticks: [1, 10, 100, 1000, 10000, 100000].filter(t => t >= ymax / 1e4 && t <= ymax), label: 'I (cd, log)', fmt: t => t >= 1000 ? (t / 1000) + 'k' : t },
     y2: { min: 0, max: gmax, ticks: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0].filter(t => t <= gmax), label: 'G', fmt: t => t.toFixed(1) },
-    hlines: [{ y: 0.13, axis: 'y2', color: css('--ok'), dash: [2, 3] }, { y: 0.40, axis: 'y2', color: css('--bad'), dash: [2, 3] }],
+    hlines: [{ y: 0.13, axis: 'y2', color: css('--ok'), dash: [2, 3] }, { y: 0.40, axis: 'y2', color: css('--bad'), dash: [2, 3] }].concat(r.scan25.thr > 0 ? [{ y: r.scan25.thr, color: css('--text-2'), dash: [6, 3], width: 1 }] : []),
     vlines: [{ x: vc, color: css('--text-2'), dash: [1, 3] }],
     series, marks
   });
   if (tgt) return;
   $('vsSub').textContent = 'log I (solid) and gradient G (dashed) at 1.5°, 2.5°, 3.5°' + sd + ', V in file angles.';
-  $('vsLegend').innerHTML = scans.map(([lab], i) => '<span><span class="sw" style="border-color:' + cols[i] + '"></span>' + lab + '</span>').join('') + '<span>G limits 0.13 (min) and 0.40 (max)</span>';
+  $('vsLegend').innerHTML = scans.map(([lab], i) => '<span><span class="sw" style="border-color:' + cols[i] + '"></span>' + lab + '</span>').join('') + '<span>G limits 0.13 (min) and 0.40 (max)</span>' + (r.scan25.thr > 0 ? '<span>Long dashes on the I axis: gradient threshold ' + fmt(r.scan25.thr) + ' cd</span>' : '');
 }
 
 function drawCLine(tgt) {
